@@ -177,9 +177,14 @@ class OqsLikeSignatureAdapter:
             method = getattr(self.impl, method_name, None)
             if callable(method):
                 try:
-                    return method(message, secret_key)
-                except TypeError:
+                    # Most Python PQ implementations expect (secret_key, message).
                     return method(secret_key, message)
+                except Exception:
+                    try:
+                        # Some wrappers use (message, secret_key).
+                        return method(message, secret_key)
+                    except Exception:
+                        continue
         raise AttributeError(f"Signature backend {self.impl!r} does not expose signing")
 
     def verify(self, public_key: bytes, message: bytes, signature: bytes) -> bool:
@@ -187,12 +192,18 @@ class OqsLikeSignatureAdapter:
             method = getattr(self.impl, method_name, None)
             if callable(method):
                 try:
-                    return bool(method(message, signature, public_key))
-                except TypeError:
+                    # Common order in local wrappers: (public_key, message, signature)
+                    return bool(method(public_key, message, signature))
+                except Exception:
                     try:
-                        return bool(method(public_key, message, signature))
-                    except TypeError:
-                        return bool(method(signature, message, public_key))
+                        # oqs-like wrappers: (message, signature, public_key)
+                        return bool(method(message, signature, public_key))
+                    except Exception:
+                        try:
+                            # Less common order.
+                            return bool(method(signature, message, public_key))
+                        except Exception:
+                            continue
         raise AttributeError(f"Signature backend {self.impl!r} does not expose verification")
 
 
