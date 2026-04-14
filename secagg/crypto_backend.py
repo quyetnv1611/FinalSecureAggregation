@@ -61,6 +61,8 @@ def cuda_kem_available() -> bool:
     # Probe optional CUDA KEM adapter package (including user-specified module).
     custom = os.getenv("SECAGG_CUDA_KEM_MODULE", "").strip()
     if custom:
+        if custom == "secagg.cuda_adapter_skeleton":
+            return False
         return importlib.util.find_spec(custom) is not None
     return (
         importlib.util.find_spec("kyber_py_cuda") is not None
@@ -73,6 +75,8 @@ def cuda_sig_available() -> bool:
     # Probe optional CUDA SIG adapter package (including user-specified module).
     custom = os.getenv("SECAGG_CUDA_SIG_MODULE", "").strip()
     if custom:
+        if custom == "secagg.cuda_adapter_skeleton":
+            return False
         return importlib.util.find_spec(custom) is not None
     return (
         importlib.util.find_spec("dilithium_py_cuda") is not None

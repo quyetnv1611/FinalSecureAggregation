@@ -208,6 +208,7 @@ class OqsLikeSignatureAdapter:
 
 
 def load_cuda_kem_adapter(level: str) -> tuple[str, Any] | None:
+    allow_skeleton = os.getenv("SECAGG_ALLOW_SKELETON_CUDA", "0").strip().lower() in {"1", "true", "yes", "on"}
     module_names = [
         _env_module_name("SECAGG_CUDA_KEM_MODULE"),
         "liboqs_cuda",
@@ -219,6 +220,12 @@ def load_cuda_kem_adapter(level: str) -> tuple[str, Any] | None:
         if loaded is None:
             return None
         module_name, module = loaded
+        if module_name == "secagg.cuda_adapter_skeleton" and not allow_skeleton:
+            logger.warning(
+                "Ignoring secagg.cuda_adapter_skeleton for CUDA mode. "
+                "Set SECAGG_ALLOW_SKELETON_CUDA=1 only for wiring tests."
+            )
+            return None
         if hasattr(module, "KeyEncapsulation"):
             try:
                 impl = module.KeyEncapsulation(candidate)
@@ -238,6 +245,7 @@ def load_cuda_kem_adapter(level: str) -> tuple[str, Any] | None:
 
 
 def load_cuda_sig_adapter(level: str) -> tuple[str, Any] | None:
+    allow_skeleton = os.getenv("SECAGG_ALLOW_SKELETON_CUDA", "0").strip().lower() in {"1", "true", "yes", "on"}
     module_names = [
         _env_module_name("SECAGG_CUDA_SIG_MODULE"),
         "cuDilithium",
@@ -249,6 +257,12 @@ def load_cuda_sig_adapter(level: str) -> tuple[str, Any] | None:
         if loaded is None:
             return None
         module_name, module = loaded
+        if module_name == "secagg.cuda_adapter_skeleton" and not allow_skeleton:
+            logger.warning(
+                "Ignoring secagg.cuda_adapter_skeleton for CUDA mode. "
+                "Set SECAGG_ALLOW_SKELETON_CUDA=1 only for wiring tests."
+            )
+            return None
         if hasattr(module, "Signature"):
             try:
                 impl = module.Signature(candidate)
