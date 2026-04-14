@@ -1,0 +1,27 @@
+# Secure Aggregation – Bonawitz et al. (CCS 2017)
+# Install with: pip install -r requirements.txt
+
+# ── Core protocol (SecAgg server + clients) ──────────────────────────────────
+flask>=2.3
+flask-socketio>=5.3
+python-socketio>=5.10
+python-engineio>=4.8
+numpy>=1.24
+requests>=2.28
+websocket-client>=1.6
+
+# ── Post-quantum cryptography ─────────────────────────────────────────────────
+cryptography>=42.0    # classic ECDSA-P256 backend for sig_pq.py
+kyber-py>=1.2         # ML-KEM (FIPS 203) — post-quantum KEM  (secagg/crypto_mlkem.py)
+dilithium-py>=1.4     # ML-DSA (FIPS 204) — Dilithium          (secagg/sig_pq.py)
+slh-dsa>=0.2          # SLH-DSA (FIPS 205) — SPHINCS+           (secagg/sig_pq.py)
+
+# ── Benchmark / FL simulation (experiments/) ──────────────────────────────────
+torch>=2.1
+torchvision>=0.16
+scikit-learn>=1.3     # TF-IDF, LabelEncoder, MinMaxScaler
+pandas>=2.0           # optional: post-process CSV results
+matplotlib>=3.7       # optional: plot benchmark charts
+seaborn>=0.13         # optional: styled plots
+tqdm>=4.65            # optional: progress bars
+datasets>=2.14        # HuggingFace datasets (SMS Spam loader)

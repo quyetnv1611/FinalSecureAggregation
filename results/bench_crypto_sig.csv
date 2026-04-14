@@ -1,0 +1,6 @@
+backend,pk_bytes,sk_bytes,sig_bytes,keygen_ms,sign_ms,verify_ms,pq_safe
+classic,65,241,72,0.053,0.118,0.125,False
+ML-DSA-44,1312,2560,2420,6.055,33.006,7.199,True
+ML-DSA-65,1952,4032,3309,11.99,68.002,12.77,True
+ML-DSA-87,2592,4896,4627,16.788,69.26,18.493,True
+SLH-DSA-shake_128f,32,64,17088,17.204,207.946,11.752,True
