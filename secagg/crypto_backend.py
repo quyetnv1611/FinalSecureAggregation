@@ -68,6 +68,11 @@ def cuda_kem_available() -> bool:
     library_path = os.getenv("SECAGG_CUDA_KEM_LIBRARY", "").strip()
     if library_path:
         return Path(os.path.expandvars(os.path.expanduser(library_path))).exists()
+    library_root = os.getenv("SECAGG_CUDA_LIBRARY_ROOT", "").strip()
+    if library_root:
+        root = Path(os.path.expandvars(os.path.expanduser(library_root)))
+        if root.exists() and next(root.rglob("liboqs.so"), None) is not None:
+            return True
     return (
         importlib.util.find_spec("kyber_py_cuda") is not None
         or importlib.util.find_spec("pqc_cuda_kyber") is not None
@@ -85,6 +90,11 @@ def cuda_sig_available() -> bool:
     library_path = os.getenv("SECAGG_CUDA_SIG_LIBRARY", "").strip()
     if library_path:
         return Path(os.path.expandvars(os.path.expanduser(library_path))).exists()
+    library_root = os.getenv("SECAGG_CUDA_LIBRARY_ROOT", "").strip()
+    if library_root:
+        root = Path(os.path.expandvars(os.path.expanduser(library_root)))
+        if root.exists() and any(next(root.rglob(pattern), None) is not None for pattern in ("libcuDilithium3.so", "libcuDilithium2.so", "libcuDilithium5.so")):
+            return True
     return (
         importlib.util.find_spec("dilithium_py_cuda") is not None
         or importlib.util.find_spec("cuDilithium") is not None

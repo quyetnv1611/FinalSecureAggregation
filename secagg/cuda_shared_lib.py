@@ -3,6 +3,7 @@ from __future__ import annotations
 import ctypes
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 
 _UINT8_PTR = ctypes.c_void_p
@@ -15,6 +16,25 @@ def _load_library(path: str | None, fallbacks: tuple[str, ...]) -> tuple[str, ct
         if not os.path.exists(expanded):
             raise FileNotFoundError(f"CUDA shared library not found: {expanded}")
         return expanded, ctypes.CDLL(expanded)
+
+    search_roots = []
+    for root in (
+        os.getenv("SECAGG_CUDA_LIBRARY_ROOT", ""),
+        "/content/drive",
+        "/content",
+        os.getcwd(),
+    ):
+        if root and root not in search_roots:
+            search_roots.append(root)
+
+    for root in search_roots:
+        base = Path(os.path.expandvars(os.path.expanduser(root)))
+        if not base.exists():
+            continue
+        for candidate in fallbacks:
+            for match in base.rglob(candidate):
+                if match.is_file():
+                    return str(match), ctypes.CDLL(str(match))
 
     for candidate in fallbacks:
         try:

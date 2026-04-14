@@ -60,14 +60,29 @@ If those libraries are not present, the benchmark will fall back to CPU or fail 
 
 ## Colab setup
 
-Use this cell in Colab to clone the repo, install dependencies, locate your CUDA shared libraries, and run the benchmark:
+Use the first cell to build or upload the CUDA libraries into Google Drive. Use the second cell to run the benchmark.
+
+### 1. Build or place the CUDA libraries in Drive
+
+```python
+from google.colab import drive
+drive.mount('/content/drive')
+
+%cd /content
+!mkdir -p /content/drive/MyDrive/secagg_build
+
+# Put or build these files under /content/drive/MyDrive/secagg_build
+#   liboqs.so
+#   libcuDilithium3.so (or libcuDilithium2.so / libcuDilithium5.so)
+
+!find /content/drive -name 'liboqs.so' -o -name 'libcuDilithium3.so' -o -name 'libcuDilithium2.so' -o -name 'libcuDilithium5.so'
+```
+
+### 2. Run the benchmark
 
 ```python
 import os
 from pathlib import Path
-
-from google.colab import drive
-drive.mount('/content/drive')
 
 %cd /content/
 
@@ -90,33 +105,27 @@ def find_first(root: str, patterns: list[str]) -> str | None:
                 return str(path)
     return None
 
+os.environ['SECAGG_CUDA_LIBRARY_ROOT'] = '/content/drive'
+
 kem_lib = find_first('/content/drive', ['liboqs.so'])
 sig_lib = find_first('/content/drive', ['libcuDilithium3.so', 'libcuDilithium2.so', 'libcuDilithium5.so'])
 
-print('KEM library exists:', os.path.exists(kem_lib), kem_lib)
-print('SIG library exists:', os.path.exists(sig_lib), sig_lib)
-if not os.path.exists(kem_lib):
-    raise FileNotFoundError('Missing CUDA KEM library. Upload or build liboqs.so with cuPQC enabled, then mount Drive again.')
-if not os.path.exists(sig_lib):
-    raise FileNotFoundError('Missing CUDA SIG library. Upload or build a cuDilithium shared library, then mount Drive again.')
+print('KEM library:', kem_lib)
+print('SIG library:', sig_lib)
 
-os.environ['SECAGG_CRYPTO_ACCEL'] = 'cuda'
+if not kem_lib or not sig_lib:
+    print('Missing CUDA backend. Build or upload the .so files first, then rerun this cell.')
+else:
+    os.environ['SECAGG_CRYPTO_ACCEL'] = 'cuda'
+    os.environ['SECAGG_CUDA_KEM_LIBRARY'] = kem_lib
+    os.environ['SECAGG_CUDA_SIG_LIBRARY'] = sig_lib
 
-os.environ['SECAGG_CUDA_KEM_LIBRARY'] = kem_lib
-os.environ['SECAGG_CUDA_SIG_LIBRARY'] = sig_lib
-
-# Optional CPU fallback modules, if you want liboqs on CPU when CUDA is not available.
-# os.environ['SECAGG_CPU_KEM_MODULE'] = 'oqs'
-# os.environ['SECAGG_CPU_SIG_MODULE'] = 'oqs'
-
-!python experiments/benchmarks/bench_orig_vs_pq.py \
-    --crypto-accel cuda \
-    --require-cuda-backend \
-    --cuda-kem-library "$SECAGG_CUDA_KEM_LIBRARY" \
-    --cuda-sig-library "$SECAGG_CUDA_SIG_LIBRARY" \
-    --vector-sizes 100000,200000,300000,400000,500000 \
-    --clients 100,200 \
-    --dropouts 0.0,0.1 \
-    --n-repeat 3 \
-    --reset-checkpoint
+    !python experiments/benchmarks/bench_orig_vs_pq.py \
+        --crypto-accel cuda \
+        --require-cuda-backend \
+        --vector-sizes 100000,200000,300000,400000,500000 \
+        --clients 100,200 \
+        --dropouts 0.0,0.1 \
+        --n-repeat 3 \
+        --reset-checkpoint
 ```
