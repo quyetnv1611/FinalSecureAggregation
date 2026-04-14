@@ -204,11 +204,26 @@ DATASETS = {
 }
 
 # ---------------------------------------------------------------------------
+# Device selection
+# ---------------------------------------------------------------------------
+
+def _get_device() -> str:
+    """Automatically select GPU if available, otherwise CPU."""
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        print(f"[bench_accuracy] GPU detected: {torch.cuda.get_device_name(0)}")
+    print(f"[bench_accuracy] Using device: {device}")
+    return device
+
+# ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
 
 def run(dataset_names: list[str] | None = None) -> None:
     names = dataset_names or list(DATASETS.keys())
+    
+    # Automatically select best device (GPU if available)
+    device = _get_device()
     
     # Load checkpoint to support resumable runs
     completed, rows = _load_checkpoint()
@@ -269,6 +284,7 @@ def run(dataset_names: list[str] | None = None) -> None:
                     kem_backend    = kem,
                     sig_backend    = sig,
                     secagg_n       = SECAGG_N,
+                    device         = device,
                     n_local_epochs = LOCAL_EPOCHS,
                     lr             = LR,
                 )

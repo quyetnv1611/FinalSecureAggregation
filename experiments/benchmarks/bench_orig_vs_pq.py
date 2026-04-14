@@ -46,6 +46,7 @@ from pathlib import Path
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import torch
 
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT))
@@ -334,7 +335,13 @@ def _plot_vector(summary: pd.DataFrame, metric: str, title: str, ylabel: str, ou
     plt.close(fig)
 
 
-def run() -> None:
+def run(device: str = None) -> None:
+    # Automatically select GPU if available, otherwise CPU
+    if device is None:
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+    if torch.cuda.is_available():
+        print(f"[orig_vs_pq] GPU detected: {torch.cuda.get_device_name(0)}")
+    print(f"[orig_vs_pq] Using device: {device}")
     # Load checkpoint to support resumable runs
     completed, timing_rows, summary_rows = _load_checkpoint()
     
