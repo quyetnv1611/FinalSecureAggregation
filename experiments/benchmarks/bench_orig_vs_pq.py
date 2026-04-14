@@ -626,6 +626,8 @@ if __name__ == "__main__":
     parser.add_argument("--crypto-accel", type=str, default="auto", choices=["auto", "cuda", "cpu"], help="Crypto accel mode [default: auto]")
     parser.add_argument("--cuda-kem-module", type=str, default="", help="Optional CUDA KEM module name")
     parser.add_argument("--cuda-sig-module", type=str, default="", help="Optional CUDA SIG module name")
+    parser.add_argument("--cuda-kem-library", type=str, default="", help="Optional path to a real CUDA ML-KEM shared library (e.g. liboqs.so built with cuPQC)")
+    parser.add_argument("--cuda-sig-library", type=str, default="", help="Optional path to a real CUDA signature shared library (e.g. cuDilithium .so/.dll)")
     parser.add_argument("--cpu-kem-module", type=str, default="", help="Optional CPU KEM module name (e.g. oqs)")
     parser.add_argument("--cpu-sig-module", type=str, default="", help="Optional CPU SIG module name (e.g. oqs)")
     parser.add_argument("--prefer-liboqs", action="store_true", help="Prefer liboqs CPU adapter when available")
@@ -665,6 +667,8 @@ if __name__ == "__main__":
         crypto_accel=args.crypto_accel,
         cuda_kem_module=args.cuda_kem_module or None,
         cuda_sig_module=args.cuda_sig_module or None,
+        cuda_kem_library=args.cuda_kem_library or None,
+        cuda_sig_library=args.cuda_sig_library or None,
         cpu_kem_module=args.cpu_kem_module or None,
         cpu_sig_module=args.cpu_sig_module or None,
         prefer_liboqs=args.prefer_liboqs,

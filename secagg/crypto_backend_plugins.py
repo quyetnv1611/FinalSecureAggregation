@@ -7,6 +7,8 @@ import os
 from dataclasses import dataclass
 from typing import Any, Iterable
 
+from .cuda_shared_lib import load_ctypes_dilithium_adapter, load_ctypes_mlkem_adapter
+
 logger = logging.getLogger(__name__)
 
 
@@ -208,6 +210,12 @@ class OqsLikeSignatureAdapter:
 
 
 def load_cuda_kem_adapter(level: str) -> tuple[str, Any] | None:
+    library_path = _env_module_name("SECAGG_CUDA_KEM_LIBRARY")
+    if library_path:
+        loaded = load_ctypes_mlkem_adapter(level, library_path)
+        if loaded is not None:
+            return loaded
+
     allow_skeleton = os.getenv("SECAGG_ALLOW_SKELETON_CUDA", "0").strip().lower() in {"1", "true", "yes", "on"}
     module_names = [
         _env_module_name("SECAGG_CUDA_KEM_MODULE"),
@@ -245,6 +253,12 @@ def load_cuda_kem_adapter(level: str) -> tuple[str, Any] | None:
 
 
 def load_cuda_sig_adapter(level: str) -> tuple[str, Any] | None:
+    library_path = _env_module_name("SECAGG_CUDA_SIG_LIBRARY")
+    if library_path:
+        loaded = load_ctypes_dilithium_adapter(level, library_path)
+        if loaded is not None:
+            return loaded
+
     allow_skeleton = os.getenv("SECAGG_ALLOW_SKELETON_CUDA", "0").strip().lower() in {"1", "true", "yes", "on"}
     module_names = [
         _env_module_name("SECAGG_CUDA_SIG_MODULE"),

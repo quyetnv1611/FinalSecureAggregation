@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import logging
 import os
+from pathlib import Path
 from typing import Literal, Tuple
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,9 @@ def cuda_kem_available() -> bool:
         if custom == "secagg.cuda_adapter_skeleton":
             return False
         return importlib.util.find_spec(custom) is not None
+    library_path = os.getenv("SECAGG_CUDA_KEM_LIBRARY", "").strip()
+    if library_path:
+        return Path(os.path.expandvars(os.path.expanduser(library_path))).exists()
     return (
         importlib.util.find_spec("kyber_py_cuda") is not None
         or importlib.util.find_spec("pqc_cuda_kyber") is not None
@@ -78,6 +82,9 @@ def cuda_sig_available() -> bool:
         if custom == "secagg.cuda_adapter_skeleton":
             return False
         return importlib.util.find_spec(custom) is not None
+    library_path = os.getenv("SECAGG_CUDA_SIG_LIBRARY", "").strip()
+    if library_path:
+        return Path(os.path.expandvars(os.path.expanduser(library_path))).exists()
     return (
         importlib.util.find_spec("dilithium_py_cuda") is not None
         or importlib.util.find_spec("cuDilithium") is not None
@@ -90,6 +97,8 @@ def configure_backend_environment(
     crypto_accel: str | None = None,
     cuda_kem_module: str | None = None,
     cuda_sig_module: str | None = None,
+    cuda_kem_library: str | None = None,
+    cuda_sig_library: str | None = None,
     cpu_kem_module: str | None = None,
     cpu_sig_module: str | None = None,
     prefer_liboqs: bool | None = None,
@@ -105,6 +114,10 @@ def configure_backend_environment(
         os.environ["SECAGG_CUDA_KEM_MODULE"] = cuda_kem_module
     if cuda_sig_module is not None:
         os.environ["SECAGG_CUDA_SIG_MODULE"] = cuda_sig_module
+    if cuda_kem_library is not None:
+        os.environ["SECAGG_CUDA_KEM_LIBRARY"] = cuda_kem_library
+    if cuda_sig_library is not None:
+        os.environ["SECAGG_CUDA_SIG_LIBRARY"] = cuda_sig_library
     if cpu_kem_module is not None:
         os.environ["SECAGG_CPU_KEM_MODULE"] = cpu_kem_module
     if cpu_sig_module is not None:
