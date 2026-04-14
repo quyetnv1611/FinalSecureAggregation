@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import csv
 import json
+import os
 import sys
 import time
 from functools import lru_cache
@@ -53,6 +54,8 @@ sys.path.insert(0, str(ROOT))
 
 from experiments.fl_simulator import run_secagg_timing
 from secagg.config import DH_PRIME
+from secagg.crypto_backend import configure_backend_environment
+from secagg.crypto_backend import cuda_kem_available, cuda_sig_available, resolve_mode
 from secagg.crypto_mlkem import SecAggregatorMLKEM
 from secagg.sig_pq import make_signer
 
@@ -266,6 +269,19 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]])
         writer.writerows(rows)
 
 
+def _log_backend_state() -> None:
+    runtime_gpu = torch.cuda.is_available()
+    requested_mode = os.getenv("SECAGG_CRYPTO_ACCEL", "auto")
+    effective_mode = resolve_mode(requested_mode)
+    print(f"[orig_vs_pq] Torch CUDA available: {runtime_gpu}")
+    if runtime_gpu:
+        print(f"[orig_vs_pq] Torch GPU device: {torch.cuda.get_device_name(0)}")
+    print(
+        f"[orig_vs_pq] Crypto accel request={requested_mode!r} effective={effective_mode} "
+        f"kem_cuda={cuda_kem_available()} sig_cuda={cuda_sig_available()}"
+    )
+
+
 def _plot_clients(summary: pd.DataFrame, metric: str, title: str, ylabel: str, out_path: Path) -> None:
     fig, axes = plt.subplots(2, 2, figsize=(12, 8), sharex=True)
     axes = axes.flatten()
@@ -339,8 +355,7 @@ def run(device: str = None) -> None:
     # Automatically select GPU if available, otherwise CPU
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    if torch.cuda.is_available():
-        print(f"[orig_vs_pq] GPU detected: {torch.cuda.get_device_name(0)}")
+    _log_backend_state()
     print(f"[orig_vs_pq] Using device: {device}")
     # Load checkpoint to support resumable runs
     completed, timing_rows, summary_rows = _load_checkpoint()
@@ -586,4 +601,24 @@ def run(device: str = None) -> None:
 
 
 if __name__ == "__main__":
+    import argparse
+
+    parser = argparse.ArgumentParser(description="Original vs PQ benchmark")
+    parser.add_argument("--crypto-accel", type=str, default="auto", choices=["auto", "cuda", "cpu"], help="Crypto accel mode [default: auto]")
+    parser.add_argument("--cuda-kem-module", type=str, default="", help="Optional CUDA KEM module name")
+    parser.add_argument("--cuda-sig-module", type=str, default="", help="Optional CUDA SIG module name")
+    parser.add_argument("--cpu-kem-module", type=str, default="", help="Optional CPU KEM module name (e.g. oqs)")
+    parser.add_argument("--cpu-sig-module", type=str, default="", help="Optional CPU SIG module name (e.g. oqs)")
+    parser.add_argument("--prefer-liboqs", action="store_true", help="Prefer liboqs CPU adapter when available")
+    args = parser.parse_args()
+
+    configure_backend_environment(
+        crypto_accel=args.crypto_accel,
+        cuda_kem_module=args.cuda_kem_module or None,
+        cuda_sig_module=args.cuda_sig_module or None,
+        cpu_kem_module=args.cpu_kem_module or None,
+        cpu_sig_module=args.cpu_sig_module or None,
+        prefer_liboqs=args.prefer_liboqs,
+    )
+
     run()

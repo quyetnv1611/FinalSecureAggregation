@@ -7,8 +7,10 @@ from random import randrange
 from typing import Dict, List, Tuple
 
 import numpy as np
+import torch
 
 from . import config
+from .crypto_backend import resolve_mode
 
 logger = logging.getLogger(__name__)
 
@@ -22,9 +24,20 @@ def _dh_seed_to_numpy_seed(shared_secret: int) -> int:
     return int.from_bytes(hashlib.sha256(raw).digest()[:4], "big")
 
 
-def _prg(seed: int, shape: Tuple[int, int]) -> np.ndarray:
+def _prg(seed: int, shape: Tuple[int, int], use_cuda: bool = False):
+    if use_cuda and torch.cuda.is_available():
+        generator = torch.Generator(device="cuda")
+        generator.manual_seed(_dh_seed_to_numpy_seed(seed) % (2**63 - 1))
+        return torch.randint(
+            low=-10**14,
+            high=10**14,
+            size=shape,
+            dtype=torch.int64,
+            device="cuda",
+            generator=generator,
+        )
+
     np.random.seed(_dh_seed_to_numpy_seed(seed))
-    # return np.float64(np.random.rand(*shape))
     return np.random.randint(-10**14, 10**14, size=shape, dtype=np.int64)
 
 
@@ -43,10 +56,12 @@ class SecAggregator:
         shape: Tuple[int, int] = config.MODEL_SHAPE,
         dh_generator: int = config.DH_GENERATOR,
         dh_prime: int = config.DH_PRIME,
+        crypto_accel: str | None = None,
     ) -> None:
         self._g: int = dh_generator
         self._p: int = dh_prime
         self._shape: Tuple[int, int] = shape
+        self._accel_mode = resolve_mode(crypto_accel)
 
         # DH secret key  x ∈ [2, p−2]
         self._secret_key: int = randrange(2, self._p - 1)
@@ -76,12 +91,13 @@ class SecAggregator:
         }
         self._my_sid = my_sid
 
-        masked = deepcopy(self._weights)
+        use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
+        masked = torch.as_tensor(self._weights, dtype=torch.int64, device="cuda") if use_cuda else deepcopy(self._weights)
         t0 = __import__("time").time()
 
         for sid, peer_pk in self._peer_keys.items():
             shared = pow(peer_pk, self._secret_key, self._p)
-            mask = _prg(shared, self._shape)
+            mask = _prg(shared, self._shape, use_cuda=use_cuda)
             if sid > my_sid:
                 masked += mask
             else:
@@ -90,26 +106,29 @@ class SecAggregator:
                          __import__("time").time() - t0)
 
         # Private mask PRG(b)
-        masked += _prg(self._private_seed, self._shape)
+        masked += _prg(self._private_seed, self._shape, use_cuda=use_cuda)
         logger.info("Masked gradient ready (total mask time: %.4fs)",
                     __import__("time").time() - t0)
-        return masked
+        return masked.cpu().numpy() if use_cuda else masked
 
     def private_mask(self) -> np.ndarray:
-        return -_prg(self._private_seed, self._shape)
+        use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
+        mask = _prg(self._private_seed, self._shape, use_cuda=use_cuda)
+        return (-mask).cpu().numpy() if use_cuda else -mask
 
     def reveal_pairwise_masks(self, dropout_sids: List[str]) -> np.ndarray:
         # correction = np.zeros(self._shape, dtype=np.float64)
-        correction = np.zeros(self._shape, dtype=np.int64)
+        use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
+        correction = torch.zeros(self._shape, dtype=torch.int64, device="cuda") if use_cuda else np.zeros(self._shape, dtype=np.int64)
         for sid in dropout_sids:
             if sid not in self._peer_keys:
                 logger.warning("Dropout sid %s not in peer keys; skipping.", sid)
                 continue
             shared = pow(self._peer_keys[sid], self._secret_key, self._p)
-            mask = _prg(shared, self._shape)
+            mask = _prg(shared, self._shape, use_cuda=use_cuda)
             # Mirror of the sign used in prepare_masked_gradient
             if sid < self._my_sid:
                 correction -= mask
             else:
                 correction += mask
-        return -correction
+        return (-correction).cpu().numpy() if use_cuda else -correction

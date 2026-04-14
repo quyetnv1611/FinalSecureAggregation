@@ -7,6 +7,7 @@ import os
 from typing import Tuple
 
 from .crypto_backend import cuda_sig_available, resolve_mode, split_backend_qualifier
+from .crypto_backend_plugins import load_cpu_sig_adapter, load_cuda_sig_adapter
 
 MSG = b"Secure Aggregation -- sign this public key broadcast"
 
@@ -189,12 +190,24 @@ def make_signer(backend: str):
 
     base_backend, explicit_mode = split_backend_qualifier(backend)
     accel_mode = resolve_mode(explicit_mode)
-    if accel_mode == "cuda" and not cuda_sig_available() and not _CUDA_SIG_WARNED:
-        logger.warning(
-            "CUDA mode requested for signatures but no CUDA signature adapter was found; "
-            "falling back to CPU backend."
-        )
-        _CUDA_SIG_WARNED = True
+    if accel_mode == "cuda":
+        cuda_loaded = load_cuda_sig_adapter(base_backend)
+        if cuda_loaded is not None:
+            module_name, adapter = cuda_loaded
+            logger.info("Using CUDA signature adapter %s for %s.", module_name, base_backend)
+            return adapter
+        if not cuda_sig_available() and not _CUDA_SIG_WARNED:
+            logger.warning(
+                "CUDA mode requested for signatures but no CUDA signature adapter was found; "
+                "falling back to CPU backend."
+            )
+            _CUDA_SIG_WARNED = True
+
+    cpu_loaded = load_cpu_sig_adapter(base_backend)
+    if cpu_loaded is not None:
+        module_name, adapter = cpu_loaded
+        logger.info("Using liboqs CPU signature adapter %s for %s.", module_name, base_backend)
+        return adapter
 
     if base_backend in ("classic", "ECDSA-P256", "ecdsa"):
         return ClassicECDSASigner()

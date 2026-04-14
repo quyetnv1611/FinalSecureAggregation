@@ -7,11 +7,13 @@ from copy import deepcopy
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+import torch
 from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
 from . import config
 from .crypto_backend import cuda_kem_available, resolve_mode, split_backend_qualifier
+from .crypto_backend_plugins import load_cpu_kem_adapter, load_cuda_kem_adapter
 
 logger = logging.getLogger(__name__)
 
@@ -78,12 +80,24 @@ def _select_mlkem(level: str):
 
     base_level, explicit_mode = split_backend_qualifier(level)
     accel_mode = resolve_mode(explicit_mode)
-    if accel_mode == "cuda" and not cuda_kem_available() and not _CUDA_KEM_WARNED:
-        logger.warning(
-            "CUDA mode requested for KEM but no CUDA KEM adapter was found; "
-            "falling back to CPU backend."
-        )
-        _CUDA_KEM_WARNED = True
+    if accel_mode == "cuda":
+        cuda_loaded = load_cuda_kem_adapter(base_level)
+        if cuda_loaded is not None:
+            module_name, adapter = cuda_loaded
+            logger.info("Using CUDA KEM adapter %s for %s.", module_name, base_level)
+            return adapter
+        if not cuda_kem_available() and not _CUDA_KEM_WARNED:
+            logger.warning(
+                "CUDA mode requested for KEM but no CUDA KEM adapter was found; "
+                "falling back to CPU backend."
+            )
+            _CUDA_KEM_WARNED = True
+
+    cpu_loaded = load_cpu_kem_adapter(base_level)
+    if cpu_loaded is not None:
+        module_name, adapter = cpu_loaded
+        logger.info("Using liboqs CPU KEM adapter %s for %s.", module_name, base_level)
+        return adapter
 
     if not _MLKEM_AVAILABLE:
         return _MockMLKEM()
@@ -109,11 +123,23 @@ def _kdf(shared_secret: bytes) -> int:
 #     np.random.seed(seed)
 #     return np.float64(np.random.rand(*shape))
 
-def _prg(seed: int, shape: Tuple[int, ...]) -> np.ndarray:
+def _prg(seed: int, shape: Tuple[int, ...], use_cuda: bool = False):
     """
     Sinh số giả ngẫu nhiên chuẩn mật mã (CSPRNG) sử dụng AES-256-CTR.
     Chống lại hoàn toàn các cuộc tấn công đoán seed kể cả từ máy tính lượng tử.
     """
+    if use_cuda and torch.cuda.is_available():
+        generator = torch.Generator(device="cuda")
+        generator.manual_seed(int(seed) % (2**63 - 1))
+        return torch.randint(
+            low=-10**15,
+            high=10**15,
+            size=shape,
+            dtype=torch.int64,
+            device="cuda",
+            generator=generator,
+        )
+
     # 1. Băm Seed (Shared Secret) thành khóa 32-byte (256-bit) chuẩn cho AES
     seed_bytes = seed.to_bytes((seed.bit_length() + 7) // 8 or 1, "big")
     key = hashlib.sha256(seed_bytes).digest()
@@ -153,10 +179,12 @@ class SecAggregatorMLKEM:
         self,
         shape: Tuple[int, int] = config.MODEL_SHAPE,
         security_level: str = "ML-KEM-768",
+        crypto_accel: str | None = None,
     ) -> None:
         self._mlkem = _select_mlkem(security_level)
         self._security_level = security_level
         self._shape = shape
+        self._accel_mode = resolve_mode(crypto_accel)
 
         # --- FIPS 203 §7.1  ML-KEM.KeyGen() ---
         # ek  = encapsulation key (public  — shared with all peers)
@@ -242,7 +270,8 @@ class SecAggregatorMLKEM:
             self._peer_eks = {s: ek for s, ek in peer_eks.items()
                               if s != self._my_sid}
 
-        masked = deepcopy(self._weights)
+        use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
+        masked = torch.as_tensor(self._weights, dtype=torch.int64, device="cuda") if use_cuda else deepcopy(self._weights)
         _t0 = __import__("time").time()
 
         for sid in self._peer_eks:
@@ -250,7 +279,7 @@ class SecAggregatorMLKEM:
             if K is None:
                 continue
             seed = _kdf(K)
-            mask = _prg(seed, self._shape)
+            mask = _prg(seed, self._shape, use_cuda=use_cuda)
             if sid > self._my_sid:
                 masked += mask
             else:
@@ -261,23 +290,26 @@ class SecAggregatorMLKEM:
             )
 
         # Private mask  PRG(b)  — same role as in DH variant
-        masked += _prg(_kdf(self._private_seed), self._shape)
+        masked += _prg(_kdf(self._private_seed), self._shape, use_cuda=use_cuda)
         logger.info(
             "[%s] Masked gradient ready (%.4fs)",
             self._my_sid, __import__("time").time() - _t0,
         )
-        return masked
+        return masked.cpu().numpy() if use_cuda else masked
 
     def private_mask(self) -> np.ndarray:
         
-        return -_prg(_kdf(self._private_seed), self._shape)
+        use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
+        mask = _prg(_kdf(self._private_seed), self._shape, use_cuda=use_cuda)
+        return (-mask).cpu().numpy() if use_cuda else -mask
 
     # ------------------------------------------------------------------
     # Round 3 — reveal / correction for dropouts
     # ------------------------------------------------------------------
 
     def reveal_pairwise_masks(self, dropout_sids: List[str]) -> np.ndarray:
-        correction = np.zeros(self._shape, dtype=np.int64)
+        use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
+        correction = torch.zeros(self._shape, dtype=torch.int64, device="cuda") if use_cuda else np.zeros(self._shape, dtype=np.int64)
         # correction = np.zeros(self._shape, dtype=np.float64)
         for sid in dropout_sids:
             K = self._resolve_shared_secret(sid)
@@ -288,14 +320,14 @@ class SecAggregatorMLKEM:
                 )
                 continue
             seed = _kdf(K)
-            mask = _prg(seed, self._shape)
+            mask = _prg(seed, self._shape, use_cuda=use_cuda)
             # Mirror the sign from prepare_masked_gradient
             if sid < self._my_sid:
                 correction -= mask
             else:
                 correction += mask
         # return np.float64(-correction)
-        return -correction
+        return (-correction).cpu().numpy() if use_cuda else -correction
 
     # ------------------------------------------------------------------
     # Internal helpers

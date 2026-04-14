@@ -65,3 +65,31 @@ def cuda_kem_available() -> bool:
 def cuda_sig_available() -> bool:
     # Placeholder probe for optional CUDA SIG adapter package.
     return importlib.util.find_spec("dilithium_py_cuda") is not None
+
+
+def configure_backend_environment(
+    *,
+    crypto_accel: str | None = None,
+    cuda_kem_module: str | None = None,
+    cuda_sig_module: str | None = None,
+    cpu_kem_module: str | None = None,
+    cpu_sig_module: str | None = None,
+    prefer_liboqs: bool | None = None,
+) -> None:
+    """Set environment variables used by backend auto-selection.
+
+    This keeps the existing CPU path intact while allowing explicit CUDA or
+    liboqs-backed selection from CLI tools.
+    """
+    if crypto_accel is not None:
+        os.environ["SECAGG_CRYPTO_ACCEL"] = crypto_accel
+    if cuda_kem_module is not None:
+        os.environ["SECAGG_CUDA_KEM_MODULE"] = cuda_kem_module
+    if cuda_sig_module is not None:
+        os.environ["SECAGG_CUDA_SIG_MODULE"] = cuda_sig_module
+    if cpu_kem_module is not None:
+        os.environ["SECAGG_CPU_KEM_MODULE"] = cpu_kem_module
+    if cpu_sig_module is not None:
+        os.environ["SECAGG_CPU_SIG_MODULE"] = cpu_sig_module
+    if prefer_liboqs is not None:
+        os.environ["SECAGG_PREFER_LIBOQS"] = "1" if prefer_liboqs else "0"

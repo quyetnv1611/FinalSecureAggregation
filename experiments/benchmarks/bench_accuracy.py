@@ -40,6 +40,7 @@ Columns: dataset, kem_backend, sig_backend, backend_label, round,
 from __future__ import annotations
 
 import random
+import os
 import numpy as np
 
 # Hàm set_seed cho random, numpy, torch
@@ -73,6 +74,7 @@ sys.path.insert(0, str(ROOT))
 
 from experiments.fl_simulator import run_secagg_timing
 from experiments.fl_simulator import FLSimulator
+from secagg.crypto_backend import configure_backend_environment
 
 # Model CNN mới cho MNIST: 2 conv + 2 pool + 1 linear
 class CustomMnistCNN(nn.Module):
@@ -212,6 +214,7 @@ def _get_device() -> str:
     device = "cuda" if torch.cuda.is_available() else "cpu"
     if torch.cuda.is_available():
         print(f"[bench_accuracy] GPU detected: {torch.cuda.get_device_name(0)}")
+        print(f"[bench_accuracy] CUDA capability: {torch.cuda.get_device_capability(0)}")
     print(f"[bench_accuracy] Using device: {device}")
     return device
 
@@ -288,6 +291,9 @@ def run(dataset_names: list[str] | None = None) -> None:
                     n_local_epochs = LOCAL_EPOCHS,
                     lr             = LR,
                 )
+                if device == "cuda":
+                    model_device = next(sim.global_model.parameters()).device
+                    print(f"    Model device: {model_device}")
 
                 if RUN_SEED == 'random':
                     base_seed = int(time.time())
@@ -309,7 +315,14 @@ def run(dataset_names: list[str] | None = None) -> None:
                     except Exception:
                         f1 = None
                     fl_elapsed = time.perf_counter() - t_start
-                    print(f"    Round {rnd:3d}  loss={loss:.4f}  acc={acc:.4f}  f1={f1 if f1 is not None else 'NA'}  fl_t={fl_elapsed:.1f}s train_t={train_time:.2f}s")
+                    if device == "cuda":
+                        torch.cuda.synchronize()
+                        mem_now = torch.cuda.memory_allocated() / (1024 ** 2)
+                        mem_peak = torch.cuda.max_memory_allocated() / (1024 ** 2)
+                        gpu_stat = f" gpu_mem={mem_now:.1f}MB peak={mem_peak:.1f}MB"
+                    else:
+                        gpu_stat = ""
+                    print(f"    Round {rnd:3d}  loss={loss:.4f}  acc={acc:.4f}  f1={f1 if f1 is not None else 'NA'}  fl_t={fl_elapsed:.1f}s train_t={train_time:.2f}s{gpu_stat}")
                     rows.append({
                         "dataset":           ds_name,
                         "kem_backend":       kem,
@@ -377,6 +390,12 @@ Examples:
     parser.add_argument("--n_rounds", type=int, default=20, help="Number of FL rounds [default: 20]")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate [default: 0.1]")
     parser.add_argument("--local_epochs", type=int, default=1, help="Local training epochs [default: 1]")
+    parser.add_argument("--crypto-accel", type=str, default="auto", choices=["auto", "cuda", "cpu"], help="Crypto accel mode [default: auto]")
+    parser.add_argument("--cuda-kem-module", type=str, default="", help="Optional CUDA KEM module name")
+    parser.add_argument("--cuda-sig-module", type=str, default="", help="Optional CUDA SIG module name")
+    parser.add_argument("--cpu-kem-module", type=str, default="", help="Optional CPU KEM module name (e.g. oqs)")
+    parser.add_argument("--cpu-sig-module", type=str, default="", help="Optional CPU SIG module name (e.g. oqs)")
+    parser.add_argument("--prefer-liboqs", action="store_true", help="Prefer liboqs CPU adapter when available")
     
     args = parser.parse_args()
 
@@ -386,6 +405,15 @@ Examples:
     DROPOUT = args.dropout
     LOCAL_EPOCHS = args.local_epochs
     SECAGG_N = min(10, max(3, N_CLIENTS // 5))  # Adaptive: 10 for large n, but at least 3
+
+    configure_backend_environment(
+        crypto_accel=args.crypto_accel,
+        cuda_kem_module=args.cuda_kem_module or None,
+        cuda_sig_module=args.cuda_sig_module or None,
+        cpu_kem_module=args.cpu_kem_module or None,
+        cpu_sig_module=args.cpu_sig_module or None,
+        prefer_liboqs=args.prefer_liboqs,
+    )
     
     print(f"[bench_accuracy] Config: clients={N_CLIENTS}, rounds={N_ROUNDS}, dropout={DROPOUT}, local_epochs={LOCAL_EPOCHS}")
     
