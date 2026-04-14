@@ -100,6 +100,16 @@ CHECKPOINT_DIR.mkdir(exist_ok=True)
 OUT_CHECKPOINT = CHECKPOINT_DIR / "bench_orig_vs_pq_progress.json"
 
 
+def _parse_int_list(raw: str) -> list[int]:
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    return [int(item) for item in values]
+
+
+def _parse_float_list(raw: str) -> list[float]:
+    values = [item.strip() for item in raw.split(",") if item.strip()]
+    return [float(item) for item in values]
+
+
 def _vector_shape(vector_size: int) -> tuple[int, ...]:
     return (vector_size,)
 
@@ -610,7 +620,36 @@ if __name__ == "__main__":
     parser.add_argument("--cpu-kem-module", type=str, default="", help="Optional CPU KEM module name (e.g. oqs)")
     parser.add_argument("--cpu-sig-module", type=str, default="", help="Optional CPU SIG module name (e.g. oqs)")
     parser.add_argument("--prefer-liboqs", action="store_true", help="Prefer liboqs CPU adapter when available")
+    parser.add_argument("--clients", type=str, default="", help="Comma-separated client counts, e.g. 100,200,300")
+    parser.add_argument("--dropouts", type=str, default="", help="Comma-separated dropout rates, e.g. 0.0,0.1,0.3")
+    parser.add_argument("--vector-sizes", type=str, default="", help="Comma-separated vector sizes, e.g. 50000,100000,200000")
+    parser.add_argument("--n-repeat", type=int, default=N_REPEAT, help="Number of timing repeats per scenario")
+    parser.add_argument("--reference-clients", type=int, default=REFERENCE_CLIENTS, help="Reference clients for dropout/vector sweeps")
+    parser.add_argument("--reference-dropout", type=float, default=REFERENCE_DROPOUT, help="Reference dropout for vector sweep")
+    parser.add_argument("--reset-checkpoint", action="store_true", help="Delete existing checkpoint before running")
     args = parser.parse_args()
+
+    if args.clients:
+        CLIENT_COUNTS = _parse_int_list(args.clients)
+    if args.dropouts:
+        DROPOUT_RATES = _parse_float_list(args.dropouts)
+    if args.vector_sizes:
+        VECTOR_SIZES = _parse_int_list(args.vector_sizes)
+    if args.n_repeat < 1:
+        raise ValueError("--n-repeat must be >= 1")
+    N_REPEAT = args.n_repeat
+    REFERENCE_CLIENTS = args.reference_clients
+    REFERENCE_DROPOUT = args.reference_dropout
+
+    if args.reset_checkpoint and OUT_CHECKPOINT.exists():
+        OUT_CHECKPOINT.unlink()
+        print(f"[orig_vs_pq] Removed checkpoint: {OUT_CHECKPOINT}")
+
+    print(
+        f"[orig_vs_pq] Sweep config: clients={CLIENT_COUNTS} dropouts={DROPOUT_RATES} "
+        f"vector_sizes={VECTOR_SIZES} n_repeat={N_REPEAT} "
+        f"ref_clients={REFERENCE_CLIENTS} ref_dropout={REFERENCE_DROPOUT}"
+    )
 
     configure_backend_environment(
         crypto_accel=args.crypto_accel,
