@@ -60,14 +60,14 @@ If those libraries are not present, the benchmark will fall back to CPU or fail 
 
 ## Colab setup
 
-Use this cell in Colab to clone the repo, install dependencies, point to your CUDA shared libraries, and run the benchmark:
+Use this cell in Colab to clone the repo, install dependencies, locate your CUDA shared libraries, and run the benchmark:
 
 ```python
 import os
+from pathlib import Path
 
-# Optional: mount Google Drive if your built .so files live there.
-# from google.colab import drive
-# drive.mount('/content/drive')
+from google.colab import drive
+drive.mount('/content/drive')
 
 %cd /content/
 
@@ -82,22 +82,26 @@ if not os.path.exists('FinalSecureAggregation'):
 !pip install -r requirements.txt
 !python -m py_compile secagg/cuda_shared_lib.py secagg/crypto_backend_plugins.py secagg/crypto_backend.py experiments/benchmarks/bench_orig_vs_pq.py
 
-kem_lib = '/content/drive/MyDrive/secagg_build/liboqs.so'
-sig_lib = '/content/drive/MyDrive/secagg_build/libcuDilithium3.so'
+def find_first(root: str, patterns: list[str]) -> str | None:
+    base = Path(root)
+    for pattern in patterns:
+        for path in base.rglob(pattern):
+            if path.is_file():
+                return str(path)
+    return None
+
+kem_lib = find_first('/content/drive', ['liboqs.so'])
+sig_lib = find_first('/content/drive', ['libcuDilithium3.so', 'libcuDilithium2.so', 'libcuDilithium5.so'])
 
 print('KEM library exists:', os.path.exists(kem_lib), kem_lib)
 print('SIG library exists:', os.path.exists(sig_lib), sig_lib)
 if not os.path.exists(kem_lib):
-    raise FileNotFoundError(f'Missing CUDA KEM library: {kem_lib}')
+    raise FileNotFoundError('Missing CUDA KEM library. Upload or build liboqs.so with cuPQC enabled, then mount Drive again.')
 if not os.path.exists(sig_lib):
-    raise FileNotFoundError(f'Missing CUDA SIG library: {sig_lib}')
+    raise FileNotFoundError('Missing CUDA SIG library. Upload or build a cuDilithium shared library, then mount Drive again.')
 
 os.environ['SECAGG_CRYPTO_ACCEL'] = 'cuda'
 
-# Set these to the actual shared libraries you built or mounted in Colab.
-# Example:
-#   /content/drive/MyDrive/secagg_build/liboqs.so
-#   /content/drive/MyDrive/secagg_build/libcuDilithium3.so
 os.environ['SECAGG_CUDA_KEM_LIBRARY'] = kem_lib
 os.environ['SECAGG_CUDA_SIG_LIBRARY'] = sig_lib
 
