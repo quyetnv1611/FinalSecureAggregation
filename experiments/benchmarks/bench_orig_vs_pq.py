@@ -279,17 +279,20 @@ def _write_csv(path: Path, fieldnames: list[str], rows: list[dict[str, object]])
         writer.writerows(rows)
 
 
-def _log_backend_state() -> None:
+def _log_backend_state() -> tuple[bool, bool, str, str]:
     runtime_gpu = torch.cuda.is_available()
     requested_mode = os.getenv("SECAGG_CRYPTO_ACCEL", "auto")
     effective_mode = resolve_mode(requested_mode)
+    kem_cuda = cuda_kem_available()
+    sig_cuda = cuda_sig_available()
     print(f"[orig_vs_pq] Torch CUDA available: {runtime_gpu}")
     if runtime_gpu:
         print(f"[orig_vs_pq] Torch GPU device: {torch.cuda.get_device_name(0)}")
     print(
         f"[orig_vs_pq] Crypto accel request={requested_mode!r} effective={effective_mode} "
-        f"kem_cuda={cuda_kem_available()} sig_cuda={cuda_sig_available()}"
+        f"kem_cuda={kem_cuda} sig_cuda={sig_cuda}"
     )
+    return kem_cuda, sig_cuda, requested_mode, effective_mode
 
 
 def _plot_clients(summary: pd.DataFrame, metric: str, title: str, ylabel: str, out_path: Path) -> None:
@@ -361,11 +364,17 @@ def _plot_vector(summary: pd.DataFrame, metric: str, title: str, ylabel: str, ou
     plt.close(fig)
 
 
-def run(device: str = None) -> None:
+def run(device: str = None, require_cuda_backend: bool = False) -> None:
     # Automatically select GPU if available, otherwise CPU
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-    _log_backend_state()
+    kem_cuda, sig_cuda, requested_mode, _effective_mode = _log_backend_state()
+    if require_cuda_backend and requested_mode == "cuda" and not (kem_cuda or sig_cuda):
+        raise RuntimeError(
+            "CUDA crypto backend required, but no CUDA adapter is available "
+            "(kem_cuda=False, sig_cuda=False). "
+            "Install and configure a CUDA adapter module first."
+        )
     print(f"[orig_vs_pq] Using device: {device}")
     # Load checkpoint to support resumable runs
     completed, timing_rows, summary_rows = _load_checkpoint()
@@ -627,6 +636,7 @@ if __name__ == "__main__":
     parser.add_argument("--reference-clients", type=int, default=REFERENCE_CLIENTS, help="Reference clients for dropout/vector sweeps")
     parser.add_argument("--reference-dropout", type=float, default=REFERENCE_DROPOUT, help="Reference dropout for vector sweep")
     parser.add_argument("--reset-checkpoint", action="store_true", help="Delete existing checkpoint before running")
+    parser.add_argument("--require-cuda-backend", action="store_true", help="Fail fast if --crypto-accel cuda but no CUDA KEM/SIG adapter is available")
     args = parser.parse_args()
 
     if args.clients:
@@ -660,4 +670,4 @@ if __name__ == "__main__":
         prefer_liboqs=args.prefer_liboqs,
     )
 
-    run()
+    run(require_cuda_backend=args.require_cuda_backend)

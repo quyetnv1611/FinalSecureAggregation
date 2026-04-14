@@ -58,13 +58,27 @@ def split_backend_qualifier(backend: str) -> Tuple[str, str | None]:
 
 
 def cuda_kem_available() -> bool:
-    # Placeholder probe for optional CUDA KEM adapter package.
-    return importlib.util.find_spec("kyber_py_cuda") is not None
+    # Probe optional CUDA KEM adapter package (including user-specified module).
+    custom = os.getenv("SECAGG_CUDA_KEM_MODULE", "").strip()
+    if custom:
+        return importlib.util.find_spec(custom) is not None
+    return (
+        importlib.util.find_spec("kyber_py_cuda") is not None
+        or importlib.util.find_spec("pqc_cuda_kyber") is not None
+        or importlib.util.find_spec("liboqs_cuda") is not None
+    )
 
 
 def cuda_sig_available() -> bool:
-    # Placeholder probe for optional CUDA SIG adapter package.
-    return importlib.util.find_spec("dilithium_py_cuda") is not None
+    # Probe optional CUDA SIG adapter package (including user-specified module).
+    custom = os.getenv("SECAGG_CUDA_SIG_MODULE", "").strip()
+    if custom:
+        return importlib.util.find_spec(custom) is not None
+    return (
+        importlib.util.find_spec("dilithium_py_cuda") is not None
+        or importlib.util.find_spec("cuDilithium") is not None
+        or importlib.util.find_spec("liboqs_cuda") is not None
+    )
 
 
 def configure_backend_environment(
