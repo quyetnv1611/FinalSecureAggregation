@@ -82,14 +82,24 @@ if not os.path.exists('FinalSecureAggregation'):
 !pip install -r requirements.txt
 !python -m py_compile secagg/cuda_shared_lib.py secagg/crypto_backend_plugins.py secagg/crypto_backend.py experiments/benchmarks/bench_orig_vs_pq.py
 
+kem_lib = '/content/drive/MyDrive/secagg_build/liboqs.so'
+sig_lib = '/content/drive/MyDrive/secagg_build/libcuDilithium3.so'
+
+print('KEM library exists:', os.path.exists(kem_lib), kem_lib)
+print('SIG library exists:', os.path.exists(sig_lib), sig_lib)
+if not os.path.exists(kem_lib):
+    raise FileNotFoundError(f'Missing CUDA KEM library: {kem_lib}')
+if not os.path.exists(sig_lib):
+    raise FileNotFoundError(f'Missing CUDA SIG library: {sig_lib}')
+
 os.environ['SECAGG_CRYPTO_ACCEL'] = 'cuda'
 
 # Set these to the actual shared libraries you built or mounted in Colab.
 # Example:
 #   /content/drive/MyDrive/secagg_build/liboqs.so
 #   /content/drive/MyDrive/secagg_build/libcuDilithium3.so
-os.environ['SECAGG_CUDA_KEM_LIBRARY'] = '/content/drive/MyDrive/secagg_build/liboqs.so'
-os.environ['SECAGG_CUDA_SIG_LIBRARY'] = '/content/drive/MyDrive/secagg_build/libcuDilithium3.so'
+os.environ['SECAGG_CUDA_KEM_LIBRARY'] = kem_lib
+os.environ['SECAGG_CUDA_SIG_LIBRARY'] = sig_lib
 
 # Optional CPU fallback modules, if you want liboqs on CPU when CUDA is not available.
 # os.environ['SECAGG_CPU_KEM_MODULE'] = 'oqs'
@@ -98,8 +108,8 @@ os.environ['SECAGG_CUDA_SIG_LIBRARY'] = '/content/drive/MyDrive/secagg_build/lib
 !python experiments/benchmarks/bench_orig_vs_pq.py \
     --crypto-accel cuda \
     --require-cuda-backend \
-    --cuda-kem-library /content/drive/MyDrive/secagg_build/liboqs.so \
-    --cuda-sig-library /content/drive/MyDrive/secagg_build/libcuDilithium3.so \
+    --cuda-kem-library "$SECAGG_CUDA_KEM_LIBRARY" \
+    --cuda-sig-library "$SECAGG_CUDA_SIG_LIBRARY" \
     --vector-sizes 100000,200000,300000,400000,500000 \
     --clients 100,200 \
     --dropouts 0.0,0.1 \
