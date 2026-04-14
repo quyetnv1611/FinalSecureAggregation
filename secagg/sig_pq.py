@@ -6,6 +6,8 @@ import logging
 import os
 from typing import Tuple
 
+from .crypto_backend import cuda_sig_available, resolve_mode, split_backend_qualifier
+
 MSG = b"Secure Aggregation -- sign this public key broadcast"
 
 import time
@@ -14,6 +16,8 @@ logger = logging.getLogger(__name__)
 PublicKeyBytes = bytes
 SecretKeyBytes = bytes
 SignatureBytes = bytes
+
+_CUDA_SIG_WARNED = False
 
 # --- ClassicECDSASigner ---
 class ClassicECDSASigner:
@@ -181,14 +185,25 @@ class SPHINCSPlusSigner:
 
 
 def make_signer(backend: str):
-    if backend in ("classic", "ECDSA-P256", "ecdsa"):
+    global _CUDA_SIG_WARNED
+
+    base_backend, explicit_mode = split_backend_qualifier(backend)
+    accel_mode = resolve_mode(explicit_mode)
+    if accel_mode == "cuda" and not cuda_sig_available() and not _CUDA_SIG_WARNED:
+        logger.warning(
+            "CUDA mode requested for signatures but no CUDA signature adapter was found; "
+            "falling back to CPU backend."
+        )
+        _CUDA_SIG_WARNED = True
+
+    if base_backend in ("classic", "ECDSA-P256", "ecdsa"):
         return ClassicECDSASigner()
-    if backend in ("ML-DSA-44", "ML-DSA-65", "ML-DSA-87"):
-        return DilithiumSigner(level=backend)
-    if backend.startswith("SLH-DSA-"):
-        return SPHINCSPlusSigner(variant=backend)
+    if base_backend in ("ML-DSA-44", "ML-DSA-65", "ML-DSA-87"):
+        return DilithiumSigner(level=base_backend)
+    if base_backend.startswith("SLH-DSA-"):
+        return SPHINCSPlusSigner(variant=base_backend)
     raise ValueError(
-        f"Unknown signature backend '{backend}'.\n"
+        f"Unknown signature backend '{base_backend}'.\n"
         "Valid options:\n"
         "  Classic : 'classic' / 'ECDSA-P256'\n"
         "  FIPS 204: 'ML-DSA-44', 'ML-DSA-65', 'ML-DSA-87'\n"

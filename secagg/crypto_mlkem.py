@@ -11,6 +11,7 @@ from cryptography.hazmat.primitives.ciphers import Cipher, algorithms, modes
 from cryptography.hazmat.backends import default_backend
 
 from . import config
+from .crypto_backend import cuda_kem_available, resolve_mode, split_backend_qualifier
 
 logger = logging.getLogger(__name__)
 
@@ -68,15 +69,28 @@ _LEVEL_MAP = {
     "ML-KEM-1024": (ML_KEM_1024 if _MLKEM_AVAILABLE else _MockMLKEM()),
 }
 
+_CUDA_KEM_WARNED = False
+
 
 def _select_mlkem(level: str):
     """Return the ML-KEM object for *level*, falling back to mock if needed."""
+    global _CUDA_KEM_WARNED
+
+    base_level, explicit_mode = split_backend_qualifier(level)
+    accel_mode = resolve_mode(explicit_mode)
+    if accel_mode == "cuda" and not cuda_kem_available() and not _CUDA_KEM_WARNED:
+        logger.warning(
+            "CUDA mode requested for KEM but no CUDA KEM adapter was found; "
+            "falling back to CPU backend."
+        )
+        _CUDA_KEM_WARNED = True
+
     if not _MLKEM_AVAILABLE:
         return _MockMLKEM()
-    obj = _LEVEL_MAP.get(level)
+    obj = _LEVEL_MAP.get(base_level)
     if obj is None:
         raise ValueError(
-            f"Unknown security level '{level}'. "
+            f"Unknown security level '{base_level}'. "
             "Choose from: 'ML-KEM-512', 'ML-KEM-768', 'ML-KEM-1024'."
         )
     return obj
