@@ -57,3 +57,52 @@ python experiments/benchmarks/bench_orig_vs_pq.py \
 ```
 
 If those libraries are not present, the benchmark will fall back to CPU or fail fast when `--require-cuda-backend` is set.
+
+## Colab setup
+
+Use this cell in Colab to clone the repo, install dependencies, point to your CUDA shared libraries, and run the benchmark:
+
+```python
+import os
+
+# Optional: mount Google Drive if your built .so files live there.
+# from google.colab import drive
+# drive.mount('/content/drive')
+
+%cd /content/
+
+if not os.path.exists('FinalSecureAggregation'):
+    !git clone https://github.com/quyetnv1611/FinalSecureAggregation
+
+%cd /content/FinalSecureAggregation
+
+!nvidia-smi
+!python --version
+!pip install -U pip
+!pip install -r requirements.txt
+!python -m py_compile secagg/cuda_shared_lib.py secagg/crypto_backend_plugins.py secagg/crypto_backend.py experiments/benchmarks/bench_orig_vs_pq.py
+
+os.environ['SECAGG_CRYPTO_ACCEL'] = 'cuda'
+
+# Set these to the actual shared libraries you built or mounted in Colab.
+# Example:
+#   /content/drive/MyDrive/secagg_build/liboqs.so
+#   /content/drive/MyDrive/secagg_build/libcuDilithium3.so
+os.environ['SECAGG_CUDA_KEM_LIBRARY'] = '/content/drive/MyDrive/secagg_build/liboqs.so'
+os.environ['SECAGG_CUDA_SIG_LIBRARY'] = '/content/drive/MyDrive/secagg_build/libcuDilithium3.so'
+
+# Optional CPU fallback modules, if you want liboqs on CPU when CUDA is not available.
+# os.environ['SECAGG_CPU_KEM_MODULE'] = 'oqs'
+# os.environ['SECAGG_CPU_SIG_MODULE'] = 'oqs'
+
+!python experiments/benchmarks/bench_orig_vs_pq.py \
+    --crypto-accel cuda \
+    --require-cuda-backend \
+    --cuda-kem-library /content/drive/MyDrive/secagg_build/liboqs.so \
+    --cuda-sig-library /content/drive/MyDrive/secagg_build/libcuDilithium3.so \
+    --vector-sizes 100000,200000,300000,400000,500000 \
+    --clients 100,200 \
+    --dropouts 0.0,0.1 \
+    --n-repeat 3 \
+    --reset-checkpoint
+```
