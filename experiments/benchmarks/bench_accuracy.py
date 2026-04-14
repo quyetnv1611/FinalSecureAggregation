@@ -148,16 +148,16 @@ BATCH_SIZE   = 32
 DROPOUT      = 0.1  # ty le client dropout moi vong 
 TIMING_REPS  = 2      # so lan chay roi lay trung binh
 
+# Default config - có thể thay đổi qua command line
+N_CLIENTS    = 50    # Tong so client tham gia (test: 5, 10, 20, 50, 100)
+SECAGG_N     = 10    # So client su dung de do thời gian thuat toan ma hoa (n² optimization)
+N_ROUNDS     = 20    # So vong giao tiep giua client va server (từ paper)
+LOCAL_EPOCHS = 1     # so vong client tu huan luyen
 
-
-# N_CLIENTS    = 4    # Tong so client tham gia.
-# SECAGG_N     = 3   # So client su dung de do thời gian thuat toan ma hoa 
-# N_ROUNDS     = 2    # So vong giao tiep giua client va server
-# LOCAL_EPOCHS = 1   # so vong client tu huan luyen
-# LR           = 0.01 
-# BATCH_SIZE   = 32
-# DROPOUT      = 0.1  # ty le client dropout moi vong 
-# TIMING_REPS  = 2      # so lan chay roi lay trung binh
+# Uncomment nếu muốn test với config khác
+# N_CLIENTS    = 10
+# N_ROUNDS     = 5
+# LOCAL_EPOCHS = 3
 
 # (kem_backend, sig_backend, human label)
 BACKENDS = [
@@ -359,12 +359,36 @@ def run(dataset_names: list[str] | None = None) -> None:
 
 if __name__ == "__main__":
     import argparse
-    parser = argparse.ArgumentParser()
+
+    parser = argparse.ArgumentParser(
+        description="Benchmark FL accuracy + SecAgg overhead",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog="""
+Examples:
+  python bench_accuracy.py                           # All datasets, 50 clients, 20 rounds
+  python bench_accuracy.py --dataset mnist           # MNIST only
+  python bench_accuracy.py --n_clients 10 --n_rounds 5  # Quick test: 10 clients, 5 rounds
+  python bench_accuracy.py --n_clients 100 --dropout 0.2  # Test 100 clients, 20% dropout
+        """
+    )
     parser.add_argument("--dataset", type=str, help="Dataset name (mnist, cifar10, spam, webattack)")
     parser.add_argument("--seed", type=str, default="42", help="Seed for reproducibility (int or 'random') [default: 42]")
+    parser.add_argument("--n_clients", type=int, default=50, help="Number of clients [default: 50]")
+    parser.add_argument("--n_rounds", type=int, default=20, help="Number of FL rounds [default: 20]")
+    parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate [default: 0.1]")
+    parser.add_argument("--local_epochs", type=int, default=1, help="Local training epochs [default: 1]")
+    
     args = parser.parse_args()
-    global RUN_SEED
+
     RUN_SEED = args.seed
+    N_CLIENTS = args.n_clients
+    N_ROUNDS = args.n_rounds
+    DROPOUT = args.dropout
+    LOCAL_EPOCHS = args.local_epochs
+    SECAGG_N = min(10, max(3, N_CLIENTS // 5))  # Adaptive: 10 for large n, but at least 3
+    
+    print(f"[bench_accuracy] Config: clients={N_CLIENTS}, rounds={N_ROUNDS}, dropout={DROPOUT}, local_epochs={LOCAL_EPOCHS}")
+    
     if args.dataset:
         run([args.dataset])
     else:
