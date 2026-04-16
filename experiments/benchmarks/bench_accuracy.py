@@ -65,6 +65,7 @@ import sys
 import time
 from pathlib import Path
 
+import matplotlib.pyplot as plt
 import torch
 import torch.nn as nn
 
@@ -151,7 +152,7 @@ DROPOUT      = 0.1  # ty le client dropout moi vong
 TIMING_REPS  = 2      # so lan chay roi lay trung binh
 
 # Default config - có thể thay đổi qua command line
-N_CLIENTS    = 50    # Tong so client tham gia (test: 5, 10, 20, 50, 100)
+N_CLIENTS    = 500    # Tong so client tham gia (test: 5, 10, 20, 50, 100)
 SECAGG_N     = 10    # So client su dung de do thời gian thuat toan ma hoa (n² optimization)
 N_ROUNDS     = 20    # So vong giao tiep giua client va server (từ paper)
 LOCAL_EPOCHS = 1     # so vong client tu huan luyen
@@ -370,6 +371,234 @@ def run(dataset_names: list[str] | None = None) -> None:
     print(f"\n[bench_accuracy] Results saved → {OUT_CSV}")
 
 
+def _parse_int_csv(raw: str) -> list[int]:
+    return [int(item.strip()) for item in raw.split(",") if item.strip()]
+
+
+def _parse_float_csv(raw: str) -> list[float]:
+    return [float(item.strip()) for item in raw.split(",") if item.strip()]
+
+
+def _parse_local_grid(raw: str) -> list[tuple[int, int]]:
+    pairs: list[tuple[int, int]] = []
+    for item in raw.split(","):
+        token = item.strip()
+        if not token:
+            continue
+        b_str, e_str = token.split(":", 1)
+        pairs.append((int(b_str.strip()), int(e_str.strip())))
+    return pairs
+
+
+def _run_mnist_curve(
+    *,
+    iid: bool,
+    n_clients: int,
+    batch_size: int,
+    local_epochs: int,
+    dropout: float,
+    lr: float,
+    milestones: list[int],
+    seed: str,
+) -> list[dict[str, object]]:
+    from experiments.datasets.mnist_loader import load_mnist
+
+    train_loaders, test_loader = load_mnist(n_clients=n_clients, batch_size=batch_size, iid=iid)
+    sim = FLSimulator(
+        model_fn=CustomMnistCNN,
+        loss_fn=nn.CrossEntropyLoss(),
+        kem_backend="DH",
+        sig_backend="classic",
+        secagg_n=min(10, max(3, n_clients // 5)),
+        device=_get_device(),
+        n_local_epochs=local_epochs,
+        lr=lr,
+    )
+
+    max_round = max(milestones)
+    rows: list[dict[str, object]] = []
+
+    if seed == "random":
+        base_seed = int(time.time())
+    else:
+        base_seed = int(seed)
+
+    for rnd in range(1, max_round + 1):
+        set_seed(base_seed + rnd)
+        sim.train_round(train_loaders, dropout_rate=dropout)
+        loss, acc = sim.evaluate(test_loader)
+        if rnd in milestones:
+            rows.append(
+                {
+                    "round": rnd,
+                    "loss": float(loss),
+                    "accuracy": float(acc),
+                }
+            )
+    return rows
+
+
+def _plot_study(rows: list[dict[str, object]], study: str, out_path: Path) -> None:
+    if not rows:
+        return
+
+    partitions = ["IID", "Non-IID"]
+    fig, axes = plt.subplots(1, 2, figsize=(13, 5), sharey=True)
+
+    for idx, part in enumerate(partitions):
+        ax = axes[idx]
+        part_rows = [r for r in rows if r["partition"] == part]
+        labels = sorted(set(r["setting_label"] for r in part_rows))
+        for label in labels:
+            curve = sorted((r for r in part_rows if r["setting_label"] == label), key=lambda x: int(x["round"]))
+            xs = [int(r["round"]) for r in curve]
+            ys = [float(r["accuracy"]) for r in curve]
+            ax.plot(xs, ys, marker="o", linewidth=1.8, label=label)
+        ax.set_title(f"MNIST CNN {part}")
+        ax.set_xlabel("Rounds")
+        ax.grid(True, alpha=0.3)
+        if idx == 0:
+            ax.set_ylabel("Accuracy")
+        ax.legend(fontsize=8)
+
+    fig.suptitle(f"MNIST study: {study}")
+    fig.tight_layout()
+    fig.savefig(out_path, bbox_inches="tight")
+    plt.close(fig)
+
+
+def run_mnist_studies(
+    *,
+    studies: list[str],
+    iid_mode: str,
+    milestones: list[int],
+    local_grid: list[tuple[int, int]],
+    clients_grid: list[int],
+    dropout_grid: list[float],
+    fixed_clients: int,
+    fixed_batch: int,
+    fixed_epochs: int,
+    fixed_dropout: float,
+    lr: float,
+    seed: str,
+) -> None:
+    results_path = RESULTS_DIR / "bench_accuracy_mnist_studies.csv"
+    figures_dir = ROOT / "figures"
+    figures_dir.mkdir(exist_ok=True)
+
+    if iid_mode == "both":
+        partitions = [(True, "IID"), (False, "Non-IID")]
+    elif iid_mode == "iid":
+        partitions = [(True, "IID")]
+    else:
+        partitions = [(False, "Non-IID")]
+
+    rows: list[dict[str, object]] = []
+    for iid, part_name in partitions:
+        for study in studies:
+            if study == "local_params":
+                for bsz, loc_ep in local_grid:
+                    curve = _run_mnist_curve(
+                        iid=iid,
+                        n_clients=fixed_clients,
+                        batch_size=bsz,
+                        local_epochs=loc_ep,
+                        dropout=fixed_dropout,
+                        lr=lr,
+                        milestones=milestones,
+                        seed=seed,
+                    )
+                    for point in curve:
+                        rows.append(
+                            {
+                                "study": study,
+                                "partition": part_name,
+                                "setting_label": f"B={bsz} E={loc_ep}",
+                                "n_clients": fixed_clients,
+                                "batch_size": bsz,
+                                "local_epochs": loc_ep,
+                                "dropout": fixed_dropout,
+                                **point,
+                            }
+                        )
+            elif study == "clients":
+                for n_clients in clients_grid:
+                    curve = _run_mnist_curve(
+                        iid=iid,
+                        n_clients=n_clients,
+                        batch_size=fixed_batch,
+                        local_epochs=fixed_epochs,
+                        dropout=fixed_dropout,
+                        lr=lr,
+                        milestones=milestones,
+                        seed=seed,
+                    )
+                    for point in curve:
+                        rows.append(
+                            {
+                                "study": study,
+                                "partition": part_name,
+                                "setting_label": f"C={n_clients}",
+                                "n_clients": n_clients,
+                                "batch_size": fixed_batch,
+                                "local_epochs": fixed_epochs,
+                                "dropout": fixed_dropout,
+                                **point,
+                            }
+                        )
+            elif study == "dropout":
+                for drop in dropout_grid:
+                    curve = _run_mnist_curve(
+                        iid=iid,
+                        n_clients=fixed_clients,
+                        batch_size=fixed_batch,
+                        local_epochs=fixed_epochs,
+                        dropout=drop,
+                        lr=lr,
+                        milestones=milestones,
+                        seed=seed,
+                    )
+                    for point in curve:
+                        rows.append(
+                            {
+                                "study": study,
+                                "partition": part_name,
+                                "setting_label": f"D={int(drop * 100)}%",
+                                "n_clients": fixed_clients,
+                                "batch_size": fixed_batch,
+                                "local_epochs": fixed_epochs,
+                                "dropout": drop,
+                                **point,
+                            }
+                        )
+            else:
+                raise ValueError(f"Unknown study: {study}")
+
+    fieldnames = [
+        "study",
+        "partition",
+        "setting_label",
+        "n_clients",
+        "batch_size",
+        "local_epochs",
+        "dropout",
+        "round",
+        "loss",
+        "accuracy",
+    ]
+    with results_path.open("w", newline="", encoding="utf-8") as f:
+        writer = csv.DictWriter(f, fieldnames=fieldnames)
+        writer.writeheader()
+        writer.writerows(rows)
+
+    for study in studies:
+        out_fig = figures_dir / f"bench_accuracy_mnist_{study}.png"
+        _plot_study([r for r in rows if r["study"] == study], study, out_fig)
+
+    print(f"[bench_accuracy] MNIST study CSV saved -> {results_path}")
+    print(f"[bench_accuracy] MNIST study figures saved in -> {figures_dir}")
+
+
 if __name__ == "__main__":
     import argparse
 
@@ -396,6 +625,18 @@ Examples:
     parser.add_argument("--cpu-kem-module", type=str, default="", help="Optional CPU KEM module name (e.g. oqs)")
     parser.add_argument("--cpu-sig-module", type=str, default="", help="Optional CPU SIG module name (e.g. oqs)")
     parser.add_argument("--prefer-liboqs", action="store_true", help="Prefer liboqs CPU adapter when available")
+    parser.add_argument("--mnist-studies", action="store_true", help="Run MNIST study suite (local params / clients / dropout) instead of legacy benchmark")
+    parser.add_argument("--studies", type=str, default="local_params,clients,dropout", help="Comma-separated MNIST studies")
+    parser.add_argument("--mnist-iid-mode", type=str, default="both", choices=["both", "iid", "noniid"], help="MNIST partition mode for study suite")
+    parser.add_argument("--milestones", type=str, default="5,10,20,50,100", help="Round milestones for MNIST study")
+    parser.add_argument("--local-grid", type=str, default="10:1,10:5,10:20,50:1,50:5,50:20", help="Local parameter grid as batch:epochs pairs")
+    parser.add_argument("--clients-grid", type=str, default="5,10,20,50,100", help="Client-count grid for MNIST study")
+    parser.add_argument("--dropout-grid", type=str, default="0.0,0.05,0.1,0.3,0.5", help="Dropout grid for MNIST study")
+    parser.add_argument("--study-fixed-clients", type=int, default=50, help="Fixed clients for local/dropout studies")
+    parser.add_argument("--study-fixed-batch", type=int, default=10, help="Fixed batch size for clients/dropout studies")
+    parser.add_argument("--study-fixed-epochs", type=int, default=5, help="Fixed local epochs for clients/dropout studies")
+    parser.add_argument("--study-fixed-dropout", type=float, default=0.0, help="Fixed dropout for local/clients studies")
+    parser.add_argument("--study-lr", type=float, default=0.01, help="Learning rate for MNIST study suite")
     
     args = parser.parse_args()
 
@@ -417,7 +658,24 @@ Examples:
     
     print(f"[bench_accuracy] Config: clients={N_CLIENTS}, rounds={N_ROUNDS}, dropout={DROPOUT}, local_epochs={LOCAL_EPOCHS}")
     
-    if args.dataset:
-        run([args.dataset])
+    if args.mnist_studies:
+        studies = [item.strip() for item in args.studies.split(",") if item.strip()]
+        run_mnist_studies(
+            studies=studies,
+            iid_mode=args.mnist_iid_mode,
+            milestones=_parse_int_csv(args.milestones),
+            local_grid=_parse_local_grid(args.local_grid),
+            clients_grid=_parse_int_csv(args.clients_grid),
+            dropout_grid=_parse_float_csv(args.dropout_grid),
+            fixed_clients=args.study_fixed_clients,
+            fixed_batch=args.study_fixed_batch,
+            fixed_epochs=args.study_fixed_epochs,
+            fixed_dropout=args.study_fixed_dropout,
+            lr=args.study_lr,
+            seed=args.seed,
+        )
     else:
-        run()
+        if args.dataset:
+            run([args.dataset])
+        else:
+            run()

@@ -364,7 +364,11 @@ def _plot_vector(summary: pd.DataFrame, metric: str, title: str, ylabel: str, ou
     plt.close(fig)
 
 
-def run(device: str = None, require_cuda_backend: bool = False) -> None:
+def run(
+    device: str = None,
+    require_cuda_backend: bool = False,
+    require_full_cuda_backend: bool = False,
+) -> None:
     # Automatically select GPU if available, otherwise CPU
     if device is None:
         device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -374,6 +378,12 @@ def run(device: str = None, require_cuda_backend: bool = False) -> None:
             "CUDA crypto backend required, but no CUDA adapter is available "
             "(kem_cuda=False, sig_cuda=False). "
             "Install and configure a CUDA adapter module first."
+        )
+    if require_full_cuda_backend and requested_mode == "cuda" and not (kem_cuda and sig_cuda):
+        raise RuntimeError(
+            "Full CUDA crypto backend required, but KEM/SIG CUDA adapters are incomplete "
+            f"(kem_cuda={kem_cuda}, sig_cuda={sig_cuda}). "
+            "Install and configure both CUDA KEM and CUDA SIG adapters first."
         )
     print(f"[orig_vs_pq] Using device: {device}")
     # Load checkpoint to support resumable runs
@@ -639,6 +649,7 @@ if __name__ == "__main__":
     parser.add_argument("--reference-dropout", type=float, default=REFERENCE_DROPOUT, help="Reference dropout for vector sweep")
     parser.add_argument("--reset-checkpoint", action="store_true", help="Delete existing checkpoint before running")
     parser.add_argument("--require-cuda-backend", action="store_true", help="Fail fast if --crypto-accel cuda but no CUDA KEM/SIG adapter is available")
+    parser.add_argument("--require-full-cuda-backend", action="store_true", help="Fail fast if --crypto-accel cuda but both CUDA KEM and CUDA SIG adapters are not available")
     args = parser.parse_args()
 
     if args.clients:
@@ -674,4 +685,7 @@ if __name__ == "__main__":
         prefer_liboqs=args.prefer_liboqs,
     )
 
-    run(require_cuda_backend=args.require_cuda_backend)
+    run(
+        require_cuda_backend=args.require_cuda_backend,
+        require_full_cuda_backend=args.require_full_cuda_backend,
+    )
