@@ -230,6 +230,7 @@ Use this command on Colab to generate the three study groups like your target fi
 python experiments/benchmarks/bench_accuracy.py \
     --mnist-studies \
     --mnist-iid-mode both \
+    --device cuda \
     --studies local_params,clients,dropout \
     --milestones 5,10,20,50,100 \
     --local-grid 10:1,10:5,10:20,50:1,50:5,50:20 \
@@ -255,9 +256,12 @@ Quick smoke test (faster):
 python experiments/benchmarks/bench_accuracy.py \
     --mnist-studies \
     --mnist-iid-mode both \
+    --device cuda \
     --studies local_params \
     --milestones 5,10,20 \
     --local-grid 10:1,50:5 \
     --study-fixed-clients 20 \
     --seed 42
 ```
+
+If `--device cuda` fails, it means the active Python environment does not see a CUDA-enabled PyTorch build yet. On Colab Pro, check `torch.cuda.is_available()` after installing dependencies; if it is `False`, reinstall PyTorch with a CUDA wheel or restart the runtime with GPU enabled.

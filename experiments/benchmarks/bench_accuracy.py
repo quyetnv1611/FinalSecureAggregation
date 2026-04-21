@@ -54,7 +54,8 @@ def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
     torch.manual_seed(seed)
-    torch.cuda.manual_seed_all(seed)
+    if torch.cuda.is_available():
+        torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
 
@@ -210,10 +211,29 @@ DATASETS = {
 # Device selection
 # ---------------------------------------------------------------------------
 
-def _get_device() -> str:
-    """Automatically select GPU if available, otherwise CPU."""
+def _get_device(preferred: str = "auto") -> str:
+    """Select the tensor device for FL training and evaluation."""
+    preferred = (preferred or "auto").strip().lower()
+    if preferred not in {"auto", "cpu", "cuda"}:
+        raise ValueError(f"Unknown device mode: {preferred}")
+
+    if preferred == "cpu":
+        print("[bench_accuracy] Using device: cpu")
+        return "cpu"
+
+    if preferred == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "CUDA was requested but torch.cuda.is_available() is False. "
+                "Install a CUDA-enabled PyTorch build or switch back to --device auto."
+            )
+        print(f"[bench_accuracy] GPU detected: {torch.cuda.get_device_name(0)}")
+        print(f"[bench_accuracy] CUDA capability: {torch.cuda.get_device_capability(0)}")
+        print("[bench_accuracy] Using device: cuda")
+        return "cuda"
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    if torch.cuda.is_available():
+    if device == "cuda":
         print(f"[bench_accuracy] GPU detected: {torch.cuda.get_device_name(0)}")
         print(f"[bench_accuracy] CUDA capability: {torch.cuda.get_device_capability(0)}")
     print(f"[bench_accuracy] Using device: {device}")
@@ -223,11 +243,10 @@ def _get_device() -> str:
 # Run
 # ---------------------------------------------------------------------------
 
-def run(dataset_names: list[str] | None = None) -> None:
+def run(dataset_names: list[str] | None = None, device_mode: str = "auto") -> None:
     names = dataset_names or list(DATASETS.keys())
     
-    # Automatically select best device (GPU if available)
-    device = _get_device()
+    device = _get_device(device_mode)
     
     # Load checkpoint to support resumable runs
     completed, rows = _load_checkpoint()
@@ -400,6 +419,7 @@ def _run_mnist_curve(
     lr: float,
     milestones: list[int],
     seed: str,
+    device_mode: str,
 ) -> list[dict[str, object]]:
     from experiments.datasets.mnist_loader import load_mnist
 
@@ -410,7 +430,7 @@ def _run_mnist_curve(
         kem_backend="DH",
         sig_backend="classic",
         secagg_n=min(10, max(3, n_clients // 5)),
-        device=_get_device(),
+        device=_get_device(device_mode),
         n_local_epochs=local_epochs,
         lr=lr,
     )
@@ -481,6 +501,7 @@ def run_mnist_studies(
     fixed_dropout: float,
     lr: float,
     seed: str,
+    device_mode: str,
 ) -> None:
     results_path = RESULTS_DIR / "bench_accuracy_mnist_studies.csv"
     figures_dir = ROOT / "figures"
@@ -507,6 +528,7 @@ def run_mnist_studies(
                         lr=lr,
                         milestones=milestones,
                         seed=seed,
+                        device_mode=device_mode,
                     )
                     for point in curve:
                         rows.append(
@@ -532,6 +554,7 @@ def run_mnist_studies(
                         lr=lr,
                         milestones=milestones,
                         seed=seed,
+                        device_mode=device_mode,
                     )
                     for point in curve:
                         rows.append(
@@ -557,6 +580,7 @@ def run_mnist_studies(
                         lr=lr,
                         milestones=milestones,
                         seed=seed,
+                        device_mode=device_mode,
                     )
                     for point in curve:
                         rows.append(
@@ -619,6 +643,7 @@ Examples:
     parser.add_argument("--n_rounds", type=int, default=20, help="Number of FL rounds [default: 20]")
     parser.add_argument("--dropout", type=float, default=0.1, help="Dropout rate [default: 0.1]")
     parser.add_argument("--local_epochs", type=int, default=1, help="Local training epochs [default: 1]")
+    parser.add_argument("--device", type=str, default="auto", choices=["auto", "cuda", "cpu"], help="Device for FL training [default: auto]")
     parser.add_argument("--crypto-accel", type=str, default="auto", choices=["auto", "cuda", "cpu"], help="Crypto accel mode [default: auto]")
     parser.add_argument("--cuda-kem-module", type=str, default="", help="Optional CUDA KEM module name")
     parser.add_argument("--cuda-sig-module", type=str, default="", help="Optional CUDA SIG module name")
@@ -673,9 +698,10 @@ Examples:
             fixed_dropout=args.study_fixed_dropout,
             lr=args.study_lr,
             seed=args.seed,
+            device_mode=args.device,
         )
     else:
         if args.dataset:
-            run([args.dataset])
+            run([args.dataset], device_mode=args.device)
         else:
-            run()
+            run(device_mode=args.device)
