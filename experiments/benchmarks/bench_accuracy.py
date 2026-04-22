@@ -148,7 +148,7 @@ def _save_checkpoint(completed: set[tuple], rows: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 # Config
 LR           = 0.01 
-BATCH_SIZE   = 32
+BATCH_SIZE   = 128
 DROPOUT      = 0.1  # ty le client dropout moi vong 
 TIMING_REPS  = 2      # so lan chay roi lay trung binh
 
@@ -156,7 +156,7 @@ TIMING_REPS  = 2      # so lan chay roi lay trung binh
 N_CLIENTS    = 500    # Tong so client tham gia (test: 5, 10, 20, 50, 100)
 SECAGG_N     = 10    # So client su dung de do thời gian thuat toan ma hoa (n² optimization)
 N_ROUNDS     = 20    # So vong giao tiep giua client va server (từ paper)
-LOCAL_EPOCHS = 1     # so vong client tu huan luyen
+LOCAL_EPOCHS = 3     # so vong client tu huan luyen
 
 # Uncomment nếu muốn test với config khác
 # N_CLIENTS    = 10

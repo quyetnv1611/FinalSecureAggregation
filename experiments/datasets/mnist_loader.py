@@ -31,7 +31,7 @@ def load_mnist(
 
     train_ds = datasets.MNIST(data_root, train=True,  download=True, transform=tf)
     test_ds  = datasets.MNIST(data_root, train=False, download=True, transform=tf)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=0)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
 
     if iid:
         total = len(train_ds)
@@ -49,7 +49,7 @@ def load_mnist(
         ]
 
     train_loaders = [
-        DataLoader(sub, batch_size=batch_size, shuffle=True, num_workers=0)
+        DataLoader(sub, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
         for sub in subsets
     ]
     return train_loaders, test_loader
