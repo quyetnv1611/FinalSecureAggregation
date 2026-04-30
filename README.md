@@ -265,3 +265,23 @@ python experiments/benchmarks/bench_accuracy.py \
 ```
 
 If `--device cuda` fails, it means the active Python environment does not see a CUDA-enabled PyTorch build yet. On Colab Pro, check `torch.cuda.is_available()` after installing dependencies; if it is `False`, reinstall PyTorch with a CUDA wheel or restart the runtime with GPU enabled.
+
+## Scalability study (lower table)
+
+The lower table in your screenshot comes from `experiments/benchmarks/bench_scalability.py`, which writes `results/bench_scalability_sig.csv`. This benchmark does not use a `--device` flag; on Colab GPU it uses CUDA only through the crypto backend adapters, so set the environment first and then run benchmark 2.
+
+```bash
+python -m pip install -U pip
+python -m pip install -r requirements.txt
+
+# Optional but recommended for CUDA runs if you have the CUDA libraries
+export SECAGG_CRYPTO_ACCEL=cuda
+export SECAGG_CUDA_LIBRARY_ROOT=/content/drive/MyDrive/secagg_build
+# or point these directly if you already know the library paths
+# export SECAGG_CUDA_KEM_LIBRARY=/content/drive/MyDrive/secagg_build/liboqs.so
+# export SECAGG_CUDA_SIG_LIBRARY=/content/drive/MyDrive/secagg_build/libcuDilithium3.so
+
+python run_benchmarks.py --only 2
+```
+
+If you do not have CUDA KEM/SIG libraries on Drive yet, the benchmark still runs, but it will fall back to CPU crypto backends. On Colab GPU, the actual speedup only appears when `torch.cuda.is_available()` is true and the CUDA crypto libraries are present.
