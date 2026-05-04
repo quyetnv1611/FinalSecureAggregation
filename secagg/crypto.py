@@ -17,17 +17,44 @@ logger = logging.getLogger(__name__)
 
 
 
+# def _dh_seed_to_numpy_seed(shared_secret: int) -> int:
+#     if shared_secret <= 0xFFFF_FFFF:
+#         return int(shared_secret)
+#     raw = shared_secret.to_bytes((shared_secret.bit_length() + 7) // 8, "big")
+#     return int.from_bytes(hashlib.sha256(raw).digest()[:4], "big")
+
+
+# def _prg(seed: int, shape: Tuple[int, int], use_cuda: bool = False):
+#     if use_cuda and torch.cuda.is_available():
+#         generator = torch.Generator(device="cuda")
+#         generator.manual_seed(_dh_seed_to_numpy_seed(seed) % (2**63 - 1))
+#         return torch.randint(
+#             low=-10**14,
+#             high=10**14,
+#             size=shape,
+#             dtype=torch.int64,
+#             device="cuda",
+#             generator=generator,
+#         )
+
+#     np.random.seed(_dh_seed_to_numpy_seed(seed))
+#     return np.random.randint(-10**14, 10**14, size=shape, dtype=np.int64)
+
+
 def _dh_seed_to_numpy_seed(shared_secret: int) -> int:
     if shared_secret <= 0xFFFF_FFFF:
         return int(shared_secret)
     raw = shared_secret.to_bytes((shared_secret.bit_length() + 7) // 8, "big")
-    return int.from_bytes(hashlib.sha256(raw).digest()[:4], "big")
-
+    # Lấy 8 bytes đầu tiên của mã băm SHA-256 để tạo seed 64-bit an toàn hơn
+    return int.from_bytes(hashlib.sha256(raw).digest()[:8], "big")
 
 def _prg(seed: int, shape: Tuple[int, int], use_cuda: bool = False):
+    # Đảm bảo seed là số dương 63-bit để tránh lỗi tràn số trong một số backend
+    safe_seed = _dh_seed_to_numpy_seed(seed) & ((1 << 63) - 1)
+    
     if use_cuda and torch.cuda.is_available():
         generator = torch.Generator(device="cuda")
-        generator.manual_seed(_dh_seed_to_numpy_seed(seed) % (2**63 - 1))
+        generator.manual_seed(safe_seed)
         return torch.randint(
             low=-10**14,
             high=10**14,
@@ -37,10 +64,9 @@ def _prg(seed: int, shape: Tuple[int, int], use_cuda: bool = False):
             generator=generator,
         )
 
-    np.random.seed(_dh_seed_to_numpy_seed(seed))
-    return np.random.randint(-10**14, 10**14, size=shape, dtype=np.int64)
-
-
+    # Sử dụng Generator nội bộ (Local PRG) thay vì np.random.seed (Global State)
+    rng = np.random.default_rng(safe_seed)
+    return rng.integers(-10**14, 10**14, size=shape, dtype=np.int64)
 
 # ---------------------------------------------------------------------------
 # Main class
@@ -77,6 +103,10 @@ class SecAggregator:
         # self._weights: np.ndarray = np.zeros(shape, dtype=np.float64)
 
         self._weights: np.ndarray = np.zeros(shape, dtype=np.int64)
+
+        self._peer_keys = {}
+        # Thêm từ điển lưu khóa chung đã tính
+        self._shared_secrets = {}
 
 
     def set_weights(self, weights: np.ndarray) -> None:
@@ -124,7 +154,12 @@ class SecAggregator:
             if sid not in self._peer_keys:
                 logger.warning("Dropout sid %s not in peer keys; skipping.", sid)
                 continue
-            shared = pow(self._peer_keys[sid], self._secret_key, self._p)
+            # shared = pow(self._peer_keys[sid], self._secret_key, self._p)
+            shared = self._shared_secrets.get(sid)
+            if shared is None:
+                # Fallback trong trường hợp quên chưa pre-compute
+                shared = pow(self._peer_keys[sid], self._secret_key, self._p)
+                self._shared_secrets[sid] = shared
             mask = _prg(shared, self._shape, use_cuda=use_cuda)
             # Mirror of the sign used in prepare_masked_gradient
             if sid < self._my_sid:
@@ -132,3 +167,10 @@ class SecAggregator:
             else:
                 correction += mask
         return (-correction).cpu().numpy() if use_cuda else -correction
+
+    def compute_all_shared_secrets(self) -> None:
+        """Tính và lưu trước toàn bộ shared secrets với các peer"""
+        for sid, peer_key in self._peer_keys.items():
+            if sid not in self._shared_secrets:
+                # Phép toán nặng nhất của DH nằm ở đây
+                self._shared_secrets[sid] = pow(peer_key, self._secret_key, self._p)

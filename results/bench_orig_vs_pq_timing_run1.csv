@@ -1,0 +1,7 @@
+scenario,algorithm,repeat,backend_label,kem_backend,sig_backend,n_clients,dropout_rate,vector_size,phase,time_sec
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100000,advertise_keys,12.871874
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100000,share_keys,1e-06
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100000,verify_sigs,34.470509
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100000,masked_input,8111.978145
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100000,unmasking,0.02838
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100000,total,8159.348909

@@ -37,6 +37,17 @@ N_REPEAT = 10    # timing trials per primitive
 
 def _bench_kem(backend: str, n: int = N_REPEAT) -> dict:
     """Benchmark one KEM backend, return stats dict."""
+
+
+    k = make_kem(backend)
+    # THÊM ĐOẠN WARM-UP NÀY:
+    for _ in range(2):
+        pk_w, sk_w = k.keygen()
+        ct_w, ss1_w = k.encaps(pk_w)
+        ss2_w = k.decaps(sk_w, ct_w)
+
+    t0 = time.perf_counter()
+
     if backend == "DH":
         from secagg.crypto import SecAggregator
         times_keygen = []
