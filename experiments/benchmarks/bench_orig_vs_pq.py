@@ -73,7 +73,11 @@ if _OUT_SUFFIX:
     OUT_TIMING = RESULTS_DIR / f"bench_orig_vs_pq_timing_{_OUT_SUFFIX}.csv"
     OUT_SUMMARY = RESULTS_DIR / f"bench_orig_vs_pq_summary_{_OUT_SUFFIX}.csv"
 else:
-    OUT_TIMING = RESULTS_DIR / "bench_orig_vs_pq_timing.csv"
+    OUT_TIMING = 
+    
+    
+    
+    dRESULTS_DIR / "bench_orig_vs_pq_timing.csv"
     OUT_SUMMARY = RESULTS_DIR / "bench_orig_vs_pq_summary.csv"
 
 ORIGINAL = {
@@ -573,9 +577,14 @@ def run(
 ) -> None:
     # Automatically select GPU if available, otherwise CPU
     if device is None:
-        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # device = "cuda" if torch.cuda.is_available() else "cpu"
+        device = "cuda"
 
+    import secagg.config
+    secagg.config.CRYPTO_ACCEL = "cuda"   
     kem_cuda, sig_cuda, requested_mode, _effective_mode = _log_backend_state()
+    
+    effective_mode = "cuda"
     if require_cuda_backend and requested_mode == "cuda" and not (kem_cuda or sig_cuda):
         raise RuntimeError(
             "CUDA crypto backend required, but no CUDA adapter is available "

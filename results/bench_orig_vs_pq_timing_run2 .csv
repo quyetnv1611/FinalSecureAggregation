@@ -41,3 +41,9 @@ clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,verify_sigs,
 clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,masked_input,33658.524239
 clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,unmasking,0.059392
 clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,total,33856.899645
+clients,original,2,Original (DH + ECDSA),DH,classic,1000,0.0,100000,advertise_keys,26.769697
+clients,original,2,Original (DH + ECDSA),DH,classic,1000,0.0,100000,share_keys,0.0
+clients,original,2,Original (DH + ECDSA),DH,classic,1000,0.0,100000,verify_sigs,157.821116
+clients,original,2,Original (DH + ECDSA),DH,classic,1000,0.0,100000,masked_input,77857.642128
+clients,original,2,Original (DH + ECDSA),DH,classic,1000,0.0,100000,unmasking,0.099885
+clients,original,2,Original (DH + ECDSA),DH,classic,1000,0.0,100000,total,78042.332826

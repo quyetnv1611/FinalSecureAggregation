@@ -162,7 +162,8 @@ class CTypesDilithiumAdapter:
     def keygen(self):
         public_key = ctypes.create_string_buffer(self.length_public_key)
         secret_key = ctypes.create_string_buffer(self.length_secret_key)
-        func = getattr(self.lib, "crypto_sign_keypair")
+        func = getattr(self.lib, "_Z19crypto_sign_keypairPhS_S_mmP11CUstream_stm")
+        # func = getattr(self.lib, "crypto_sign_keypair")
         func.argtypes = [_UINT8_PTR, _UINT8_PTR]
         func.restype = ctypes.c_int
         result = func(_buffer_ptr(public_key), _buffer_ptr(secret_key))
@@ -178,7 +179,9 @@ class CTypesDilithiumAdapter:
         signature = ctypes.create_string_buffer(self.length_signature)
         siglen = ctypes.c_size_t(self.length_signature)
         ctx = ctypes.create_string_buffer(1)
-        func = getattr(self.lib, "crypto_sign_signature")
+        # func = getattr(self.lib, "crypto_sign_signature")
+        func = getattr(self.lib, "_Z21crypto_sign_signaturePhmPmPKhmmS2_S_mS_mR8task_lutmmP11CUstream_st")
+
         func.argtypes = [_UINT8_PTR, _SIZE_T_PTR, _UINT8_PTR, ctypes.c_size_t, _UINT8_PTR, ctypes.c_size_t, _UINT8_PTR]
         func.restype = ctypes.c_int
         result = func(
@@ -199,7 +202,8 @@ class CTypesDilithiumAdapter:
             raise ValueError(
                 f"Expected {self.length_public_key} public key bytes for {self.algorithm}, got {len(public_key)}"
             )
-        func = getattr(self.lib, "crypto_sign_verify")
+        # func = getattr(self.lib, "crypto_sign_verify")
+        func = getattr(self.lib, "_Z18crypto_sign_verifyPiPKhmmS1_mmS1_PhmmP11CUstream_st")
         func.argtypes = [_UINT8_PTR, ctypes.c_size_t, _UINT8_PTR, ctypes.c_size_t, _UINT8_PTR]
         func.restype = ctypes.c_int
         result = func(

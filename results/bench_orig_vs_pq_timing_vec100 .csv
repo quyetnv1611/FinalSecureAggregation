@@ -41,3 +41,15 @@ clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,verify_sigs,
 clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,masked_input,33658.524239
 clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,unmasking,0.059392
 clients,original,1,Original (DH + ECDSA),DH,classic,1000,0.0,100000,total,33856.899645
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100,advertise_keys,22.985456
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100,share_keys,2e-06
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100,verify_sigs,89.777162
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100,masked_input,15590.441951
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100,unmasking,0.001908
+clients,original,1,Original (DH + ECDSA),DH,classic,500,0.0,100,total,15703.20648
+clients,pq,1,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100,advertise_keys,84.278913
+clients,pq,1,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100,share_keys,1301.61114
+clients,pq,1,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100,verify_sigs,6604.335067
+clients,pq,1,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100,masked_input,1805.197638
+clients,pq,1,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100,unmasking,0.00166
+clients,pq,1,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100,total,9795.424417
