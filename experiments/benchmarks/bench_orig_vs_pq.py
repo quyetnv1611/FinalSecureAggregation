@@ -73,11 +73,7 @@ if _OUT_SUFFIX:
     OUT_TIMING = RESULTS_DIR / f"bench_orig_vs_pq_timing_{_OUT_SUFFIX}.csv"
     OUT_SUMMARY = RESULTS_DIR / f"bench_orig_vs_pq_summary_{_OUT_SUFFIX}.csv"
 else:
-    OUT_TIMING = 
-    
-    
-    
-    dRESULTS_DIR / "bench_orig_vs_pq_timing.csv"
+    OUT_TIMING =  RESULTS_DIR / "bench_orig_vs_pq_timing.csv"
     OUT_SUMMARY = RESULTS_DIR / "bench_orig_vs_pq_summary.csv"
 
 ORIGINAL = {
