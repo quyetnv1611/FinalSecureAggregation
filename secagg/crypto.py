@@ -4,7 +4,7 @@ import hashlib
 import logging
 from copy import deepcopy
 from random import randrange
-from typing import Dict, List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 import torch
@@ -109,26 +109,37 @@ class SecAggregator:
         self._shared_secrets = {}
 
 
+    def register_peer_public_keys(self, peer_public_keys: Dict[str, int], my_sid: str) -> None:
+        self._peer_keys = {
+            sid: pk for sid, pk in peer_public_keys.items() if sid != my_sid
+        }
+        self._my_sid = my_sid
+
+
     def set_weights(self, weights: np.ndarray) -> None:
         # self._weights = np.float64(weights)
         self._weights = np.round(weights * self.SCALE_FACTOR).astype(np.int64)
 
     def prepare_masked_gradient(
-        self, peer_public_keys: Dict[str, int], my_sid: str
+        self,
+        peer_public_keys: Optional[Dict[str, int]] = None,
+        my_sid: Optional[str] = None,
     ) -> np.ndarray:
-        self._peer_keys = {
-            sid: pk for sid, pk in peer_public_keys.items() if sid != my_sid
-        }
-        self._my_sid = my_sid
+        if peer_public_keys is not None and my_sid is not None:
+            self.register_peer_public_keys(peer_public_keys, my_sid)
+        active_sid = self._my_sid
 
         use_cuda = self._accel_mode == "cuda" and torch.cuda.is_available()
         masked = torch.as_tensor(self._weights, dtype=torch.int64, device="cuda") if use_cuda else deepcopy(self._weights)
         t0 = __import__("time").time()
 
         for sid, peer_pk in self._peer_keys.items():
-            shared = pow(peer_pk, self._secret_key, self._p)
+            shared = self._shared_secrets.get(sid)
+            if shared is None:
+                shared = pow(peer_pk, self._secret_key, self._p)
+                self._shared_secrets[sid] = shared
             mask = _prg(shared, self._shape, use_cuda=use_cuda)
-            if sid > my_sid:
+            if sid > active_sid:
                 masked += mask
             else:
                 masked -= mask

@@ -237,6 +237,25 @@ def _estimate_comm_bytes(
     }
 
 
+def _split_client_server_time(
+    *,
+    advertise_keys_sec: float,
+    share_keys_sec: float,
+    verify_sigs_sec: float,
+    masked_input_sec: float,
+    unmasking_sec: float,
+) -> dict[str, float]:
+    client_time_sec = advertise_keys_sec + share_keys_sec + masked_input_sec
+    server_time_sec = verify_sigs_sec + unmasking_sec
+    total_time_sec = client_time_sec + server_time_sec
+    return {
+        "client_time_sec": round(client_time_sec, 6),
+        "server_time_sec": round(server_time_sec, 6),
+        "client_time_pct": round((client_time_sec / total_time_sec) * 100.0, 3) if total_time_sec else 0.0,
+        "server_time_pct": round((server_time_sec / total_time_sec) * 100.0, 3) if total_time_sec else 0.0,
+    }
+
+
 def _build_scenarios() -> list[dict[str, object]]:
     scenarios: list[dict[str, object]] = []
 
@@ -398,6 +417,10 @@ def _save_outputs(timing_rows: list[dict], summary_rows: list[dict]) -> None:
         "masked_input_sec",
         "unmasking_sec",
         "total_time_sec",
+        "client_time_sec",
+        "server_time_sec",
+        "client_time_pct",
+        "server_time_pct",
         "advertise_mb",
         "share_mb",
         "masked_mb",
@@ -573,14 +596,14 @@ def run(
 ) -> None:
     # Automatically select GPU if available, otherwise CPU
     if device is None:
-        # device = "cuda" if torch.cuda.is_available() else "cpu"
-        device = "cuda"
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        # device = "cuda"
 
-    import secagg.config
-    secagg.config.CRYPTO_ACCEL = "cuda"   
+    # import secagg.config
+    # secagg.config.CRYPTO_ACCEL = "cuda"   
     kem_cuda, sig_cuda, requested_mode, _effective_mode = _log_backend_state()
     
-    effective_mode = "cuda"
+    # effective_mode = "cuda"
     if require_cuda_backend and requested_mode == "cuda" and not (kem_cuda or sig_cuda):
         raise RuntimeError(
             "CUDA crypto backend required, but no CUDA adapter is available "
@@ -814,6 +837,14 @@ def run(
                     "masked_mb": round(comm["masked_mb"], 6),
                     "total_comm_mb": round(comm["total_mb"], 6),
                 })
+
+                summary_rows[-1].update(_split_client_server_time(
+                    advertise_keys_sec=summary_rows[-1]["advertise_keys_sec"],
+                    share_keys_sec=summary_rows[-1]["share_keys_sec"],
+                    verify_sigs_sec=summary_rows[-1]["verify_sigs_sec"],
+                    masked_input_sec=summary_rows[-1]["masked_input_sec"],
+                    unmasking_sec=summary_rows[-1]["unmasking_sec"],
+                ))
 
                 _save_checkpoint(progress, timing_rows, summary_rows)
                 _save_outputs(timing_rows, summary_rows)

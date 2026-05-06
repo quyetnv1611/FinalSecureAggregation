@@ -204,6 +204,8 @@ class SecAggregatorMLKEM:
         self._encaps_to: Dict[str, Tuple[bytes, bytes]] = {}
         # sid → ct_bytes sent by peers who encapsulated *to us*
         self._ct_from: Dict[str, bytes] = {}
+        # sid → shared secret bytes, cached after setup
+        self._shared_secrets: Dict[str, bytes] = {}
 
         self._peer_eks: Dict[str, bytes] = {}
         self._my_sid: str = ""
@@ -249,6 +251,14 @@ class SecAggregatorMLKEM:
                 self._my_sid, sid, len(ct),
             )
 
+    def compute_all_shared_secrets(self) -> None:
+        for sid in self._peer_eks:
+            if sid in self._shared_secrets:
+                continue
+            secret = self._resolve_shared_secret(sid)
+            if secret is not None:
+                self._shared_secrets[sid] = secret
+
     # ------------------------------------------------------------------
     # Round 2 — masked gradient upload
     # ------------------------------------------------------------------
@@ -275,7 +285,11 @@ class SecAggregatorMLKEM:
         _t0 = __import__("time").time()
 
         for sid in self._peer_eks:
-            K = self._resolve_shared_secret(sid)
+            K = self._shared_secrets.get(sid)
+            if K is None:
+                K = self._resolve_shared_secret(sid)
+                if K is not None:
+                    self._shared_secrets[sid] = K
             if K is None:
                 continue
             seed = _kdf(K)
@@ -312,7 +326,11 @@ class SecAggregatorMLKEM:
         correction = torch.zeros(self._shape, dtype=torch.int64, device="cuda") if use_cuda else np.zeros(self._shape, dtype=np.int64)
         # correction = np.zeros(self._shape, dtype=np.float64)
         for sid in dropout_sids:
-            K = self._resolve_shared_secret(sid)
+            K = self._shared_secrets.get(sid)
+            if K is None:
+                K = self._resolve_shared_secret(sid)
+                if K is not None:
+                    self._shared_secrets[sid] = K
             if K is None:
                 logger.warning(
                     "[%s] Cannot resolve shared secret for dropout %s; skipping.",

@@ -253,6 +253,29 @@ def _fed_avg(global_flat: torch.Tensor, client_updates: List[torch.Tensor]) -> t
     return torch.stack(client_updates).mean(dim=0)
 
 
+def _prepare_pairwise_keys(clients, sids, use_mlkem: bool) -> None:
+    if use_mlkem:
+        peer_eks = {sid: clients[sid].public_key for sid in sids}
+        all_cts: Dict[str, Dict] = {}
+        for sid in sids:
+            all_cts[sid] = clients[sid].generate_ciphertexts(peer_eks, sid)
+        for i, sid_v in enumerate(sids):
+            incoming = {
+                sid_u: all_cts[sid_u][sid_v]
+                for sid_u in sids[:i]
+                if sid_v in all_cts.get(sid_u, {})
+            }
+            if incoming:
+                clients[sid_v].receive_ciphertexts(incoming)
+        for sid in sids:
+            clients[sid].compute_all_shared_secrets()
+    else:
+        all_pks = {sid: clients[sid].public_key for sid in sids}
+        for sid in sids:
+            clients[sid].register_peer_public_keys(all_pks, sid)
+            clients[sid].compute_all_shared_secrets()
+
+
 
 
 def run_secagg_timing(
@@ -302,22 +325,9 @@ def run_secagg_timing(
             sig_info[sid] = (sig_pk, sig, msg)
         acc.advertise_keys += time.perf_counter() - t
 
-        # Round 1a: KEM ciphertext exchange
+        # Round 1: pairwise key setup
         t = time.perf_counter()
-        if use_mlkem:
-            peer_eks = {sid: clients[sid].public_key for sid in sids}
-            all_cts: Dict[str, Dict] = {}
-            for sid in sids:
-                all_cts[sid] = clients[sid].generate_ciphertexts(peer_eks, sid)
-            for i, sid_v in enumerate(sids):
-                incoming = {
-                    sid_u: all_cts[sid_u][sid_v]
-                    for sid_u in sids[:i]
-                    if sid_v in all_cts.get(sid_u, {})
-                }
-                if incoming:
-                    clients[sid_v].receive_ciphertexts(incoming)
-        # DH: non-interactive, no ciphertext step
+        _prepare_pairwise_keys(clients, sids, use_mlkem)
         acc.share_keys += time.perf_counter() - t
 
         # Round 1b: verify all peer pk signatures
@@ -333,16 +343,10 @@ def run_secagg_timing(
 
         # Round 2: masked gradient (survivors)
         t = time.perf_counter()
-        if use_mlkem:
-            for sid in survivor_sids:
-                clients[sid].set_weights(np.ones(grad_shape, dtype=np.float64))
-            for sid in survivor_sids:
-                clients[sid].prepare_masked_gradient()
-        else:
-            all_pks = {sid: clients[sid].public_key for sid in sids}
-            for sid in survivor_sids:
-                clients[sid].set_weights(np.ones(grad_shape, dtype=np.float64))
-                clients[sid].prepare_masked_gradient(all_pks, sid)
+        for sid in survivor_sids:
+            clients[sid].set_weights(np.ones(grad_shape, dtype=np.float64))
+        for sid in survivor_sids:
+            clients[sid].prepare_masked_gradient()
         acc.masked_input += time.perf_counter() - t
 
         # Round 3: reveal pairwise masks for dropouts

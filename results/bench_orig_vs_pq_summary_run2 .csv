@@ -1,3 +1,4 @@
 scenario,algorithm,backend_label,kem_backend,sig_backend,n_clients,dropout_rate,vector_size,advertise_keys_sec,share_keys_sec,verify_sigs_sec,masked_input_sec,unmasking_sec,total_time_sec,advertise_mb,share_mb,masked_mb,total_comm_mb
 clients,original,Original (DH + ECDSA),DH,classic,500,0.0,100000,14.632112,0.0,43.329503,8984.088794,0.034393,9042.084802,0.000391,0.0,0.775,0.775391
 clients,pq,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,500,0.0,100000,55.685072,842.30051,4295.491703,1559.52394,0.042261,6753.043486,0.006445,0.271456,0.775,1.052901
+clients,original,Original (DH + ECDSA),DH,classic,1000,0.0,100000,30.179145,0.0,177.496818,60921.703453,0.103092,61129.482508,0.000391,0.0,0.775,0.775391
