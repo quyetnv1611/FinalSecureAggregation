@@ -259,6 +259,7 @@ def _split_client_server_time(
 def _build_scenarios() -> list[dict[str, object]]:
     scenarios: list[dict[str, object]] = []
 
+    # Only generate "clients" scenarios - sweep through all client counts and dropouts
     for dropout_rate in DROPOUT_RATES:
         for n_clients in CLIENT_COUNTS:
             scenarios.append({
@@ -267,22 +268,6 @@ def _build_scenarios() -> list[dict[str, object]]:
                 "dropout_rate": dropout_rate,
                 "vector_size": VECTOR_SIZES[-1],
             })
-
-    for dropout_rate in DROPOUT_RATES:
-        scenarios.append({
-            "scenario": "dropout",
-            "n_clients": REFERENCE_CLIENTS,
-            "dropout_rate": dropout_rate,
-            "vector_size": VECTOR_SIZES[-1],
-        })
-
-    for vector_size in VECTOR_SIZES:
-        scenarios.append({
-            "scenario": "vector",
-            "n_clients": REFERENCE_CLIENTS,
-            "dropout_rate": REFERENCE_DROPOUT,
-            "vector_size": vector_size,
-        })
 
     return scenarios
 
@@ -529,50 +514,72 @@ def _plot_vector(summary: pd.DataFrame, metric: str, title: str, ylabel: str, ou
 
 def _render_plots(summary: pd.DataFrame, plot_formats: list[str] | None = None) -> None:
     formats = plot_formats or ["pdf"]
+    
+    # Check which scenarios are available in the summary data
+    available_scenarios = set(summary["scenario"].unique()) if len(summary) > 0 else set()
+    
     for ext in formats:
         suffix = ext.lower().lstrip(".")
-        _plot_clients(
-            summary,
-            metric="total_time_sec",
-            title="Original vs PQ: Total Runtime vs Participants",
-            ylabel="Total runtime (sec)",
-            out_path=FIGURES_DIR / f"bench_orig_vs_pq_runtime_clients.{suffix}",
-        )
-        _plot_clients(
-            summary,
-            metric="total_comm_mb",
-            title="Original vs PQ: Communication Cost vs Participants",
-            ylabel="Communication per client (MB)",
-            out_path=FIGURES_DIR / f"bench_orig_vs_pq_comm_clients.{suffix}",
-        )
-        _plot_dropout(
-            summary,
-            metric="total_time_sec",
-            title="Original vs PQ: Total Runtime vs Dropout Rate",
-            ylabel="Total runtime (sec)",
-            out_path=FIGURES_DIR / f"bench_orig_vs_pq_runtime_dropout.{suffix}",
-        )
-        _plot_dropout(
-            summary,
-            metric="total_comm_mb",
-            title="Original vs PQ: Communication Cost vs Dropout Rate",
-            ylabel="Communication per client (MB)",
-            out_path=FIGURES_DIR / f"bench_orig_vs_pq_comm_dropout.{suffix}",
-        )
-        _plot_vector(
-            summary,
-            metric="total_time_sec",
-            title="Original vs PQ: Total Runtime vs Vector Size",
-            ylabel="Total runtime (sec)",
-            out_path=FIGURES_DIR / f"bench_orig_vs_pq_runtime_vector.{suffix}",
-        )
-        _plot_vector(
-            summary,
-            metric="total_comm_mb",
-            title="Original vs PQ: Communication Cost vs Vector Size",
-            ylabel="Communication per client (MB)",
-            out_path=FIGURES_DIR / f"bench_orig_vs_pq_comm_vector.{suffix}",
-        )
+        
+        # Only plot if we have 'clients' scenario data
+        if "clients" in available_scenarios:
+            try:
+                _plot_clients(
+                    summary,
+                    metric="total_time_sec",
+                    title="Original vs PQ: Total Runtime vs Participants",
+                    ylabel="Total runtime (sec)",
+                    out_path=FIGURES_DIR / f"bench_orig_vs_pq_runtime_clients.{suffix}",
+                )
+                _plot_clients(
+                    summary,
+                    metric="total_comm_mb",
+                    title="Original vs PQ: Communication Cost vs Participants",
+                    ylabel="Communication per client (MB)",
+                    out_path=FIGURES_DIR / f"bench_orig_vs_pq_comm_clients.{suffix}",
+                )
+            except Exception as e:
+                print(f"[orig_vs_pq] Warning: Could not plot clients scenario: {e}")
+        
+        # Only plot if we have 'dropout' scenario data
+        if "dropout" in available_scenarios:
+            try:
+                _plot_dropout(
+                    summary,
+                    metric="total_time_sec",
+                    title="Original vs PQ: Total Runtime vs Dropout Rate",
+                    ylabel="Total runtime (sec)",
+                    out_path=FIGURES_DIR / f"bench_orig_vs_pq_runtime_dropout.{suffix}",
+                )
+                _plot_dropout(
+                    summary,
+                    metric="total_comm_mb",
+                    title="Original vs PQ: Communication Cost vs Dropout Rate",
+                    ylabel="Communication per client (MB)",
+                    out_path=FIGURES_DIR / f"bench_orig_vs_pq_comm_dropout.{suffix}",
+                )
+            except Exception as e:
+                print(f"[orig_vs_pq] Warning: Could not plot dropout scenario: {e}")
+        
+        # Only plot if we have 'vector' scenario data
+        if "vector" in available_scenarios:
+            try:
+                _plot_vector(
+                    summary,
+                    metric="total_time_sec",
+                    title="Original vs PQ: Total Runtime vs Vector Size",
+                    ylabel="Total runtime (sec)",
+                    out_path=FIGURES_DIR / f"bench_orig_vs_pq_runtime_vector.{suffix}",
+                )
+                _plot_vector(
+                    summary,
+                    metric="total_comm_mb",
+                    title="Original vs PQ: Communication Cost vs Vector Size",
+                    ylabel="Communication per client (MB)",
+                    out_path=FIGURES_DIR / f"bench_orig_vs_pq_comm_vector.{suffix}",
+                )
+            except Exception as e:
+                print(f"[orig_vs_pq] Warning: Could not plot vector scenario: {e}")
 
 
 def plot_from_summary_csv(summary_csv: Path, plot_formats: list[str] | None = None) -> None:

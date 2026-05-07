@@ -1,0 +1,1 @@
+scenario,algorithm,backend_label,kem_backend,sig_backend,n_clients,dropout_rate,vector_size,advertise_keys_sec,share_keys_sec,verify_sigs_sec,masked_input_sec,unmasking_sec,total_time_sec,client_time_sec,server_time_sec,client_time_pct,server_time_pct,advertise_mb,share_mb,masked_mb,total_comm_mb
