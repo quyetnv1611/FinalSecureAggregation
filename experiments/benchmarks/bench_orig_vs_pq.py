@@ -51,6 +51,11 @@ import torch
 
 import gc
 
+try:
+    import psutil
+except ImportError:  # pragma: no cover - optional dependency for runtime monitoring
+    psutil = None
+
 
 ROOT = Path(__file__).parents[2]
 sys.path.insert(0, str(ROOT))
@@ -72,9 +77,11 @@ _OUT_SUFFIX = os.getenv("BENCH_ORIG_VS_PQ_SUFFIX", "")
 if _OUT_SUFFIX:
     OUT_TIMING = RESULTS_DIR / f"bench_orig_vs_pq_timing_{_OUT_SUFFIX}.csv"
     OUT_SUMMARY = RESULTS_DIR / f"bench_orig_vs_pq_summary_{_OUT_SUFFIX}.csv"
+    OUT_MONITORING = RESULTS_DIR / f"bench_orig_vs_pq_monitoring_{_OUT_SUFFIX}.csv"
 else:
     OUT_TIMING =  RESULTS_DIR / "bench_orig_vs_pq_timing.csv"
     OUT_SUMMARY = RESULTS_DIR / "bench_orig_vs_pq_summary.csv"
+    OUT_MONITORING = RESULTS_DIR / "bench_orig_vs_pq_monitoring.csv"
 
 ORIGINAL = {
     "algorithm": "original",
@@ -150,6 +157,119 @@ def _pq_kem_sizes(kem_backend: str) -> tuple[int, int]:
 
 def _dh_public_key_size_bytes() -> int:
     return (DH_PRIME.bit_length() + 7) // 8
+
+
+def _format_mb(value: float | None) -> float | None:
+    if value is None:
+        return None
+    return round(float(value) / (1024 ** 2), 3)
+
+
+def _capture_runtime_snapshot(
+    *,
+    stage: str,
+    scenario: str,
+    algorithm: dict[str, str],
+    n_clients: int,
+    dropout_rate: float,
+    vector_size: int,
+    repeat_index: int | None = None,
+) -> dict[str, object]:
+    timestamp = time.time()
+    process_cpu_pct = None
+    system_cpu_pct = None
+    process_rss_mb = None
+    process_vms_mb = None
+    system_ram_used_pct = None
+    system_ram_available_mb = None
+    system_ram_total_mb = None
+    process_threads = None
+
+    if psutil is not None:
+        process = psutil.Process(os.getpid())
+        try:
+            process_cpu_pct = round(float(process.cpu_percent(None)), 3)
+        except Exception:
+            process_cpu_pct = None
+        try:
+            memory_info = process.memory_info()
+            process_rss_mb = _format_mb(memory_info.rss)
+            process_vms_mb = _format_mb(memory_info.vms)
+        except Exception:
+            process_rss_mb = None
+            process_vms_mb = None
+        try:
+            process_threads = int(process.num_threads())
+        except Exception:
+            process_threads = None
+        try:
+            system_cpu_pct = round(float(psutil.cpu_percent(None)), 3)
+        except Exception:
+            system_cpu_pct = None
+        try:
+            vm = psutil.virtual_memory()
+            system_ram_used_pct = round(float(vm.percent), 3)
+            system_ram_available_mb = _format_mb(vm.available)
+            system_ram_total_mb = _format_mb(vm.total)
+        except Exception:
+            system_ram_used_pct = None
+            system_ram_available_mb = None
+            system_ram_total_mb = None
+
+    gpu_mem_alloc_mb = None
+    gpu_mem_reserved_mb = None
+    gpu_mem_max_alloc_mb = None
+    cuda_available = bool(torch.cuda.is_available())
+    if cuda_available:
+        try:
+            gpu_mem_alloc_mb = round(torch.cuda.memory_allocated() / (1024 ** 2), 3)
+            gpu_mem_reserved_mb = round(torch.cuda.memory_reserved() / (1024 ** 2), 3)
+            gpu_mem_max_alloc_mb = round(torch.cuda.max_memory_allocated() / (1024 ** 2), 3)
+        except Exception:
+            gpu_mem_alloc_mb = None
+            gpu_mem_reserved_mb = None
+            gpu_mem_max_alloc_mb = None
+
+    return {
+        "timestamp": round(timestamp, 6),
+        "stage": stage,
+        "scenario": scenario,
+        "algorithm": algorithm["algorithm"],
+        "backend_label": algorithm["label"],
+        "kem_backend": algorithm["kem_backend"],
+        "sig_backend": algorithm["sig_backend"],
+        "n_clients": n_clients,
+        "dropout_rate": dropout_rate,
+        "vector_size": vector_size,
+        "repeat": repeat_index,
+        "process_cpu_pct": process_cpu_pct,
+        "system_cpu_pct": system_cpu_pct,
+        "process_rss_mb": process_rss_mb,
+        "process_vms_mb": process_vms_mb,
+        "system_ram_used_pct": system_ram_used_pct,
+        "system_ram_available_mb": system_ram_available_mb,
+        "system_ram_total_mb": system_ram_total_mb,
+        "process_threads": process_threads,
+        "gpu_mem_alloc_mb": gpu_mem_alloc_mb,
+        "gpu_mem_reserved_mb": gpu_mem_reserved_mb,
+        "gpu_mem_max_alloc_mb": gpu_mem_max_alloc_mb,
+        "cuda_available": cuda_available,
+        "psutil_available": psutil is not None,
+    }
+
+
+def _monitor_line(snapshot: dict[str, object]) -> str:
+    parts = [
+        f"stage={snapshot.get('stage')}",
+        f"cpu={snapshot.get('process_cpu_pct')}%",
+        f"rss={snapshot.get('process_rss_mb')}MB",
+        f"sys_ram={snapshot.get('system_ram_used_pct')}%",
+    ]
+    if snapshot.get("gpu_mem_alloc_mb") is not None:
+        parts.append(f"gpu_alloc={snapshot.get('gpu_mem_alloc_mb')}MB")
+    if snapshot.get("gpu_mem_reserved_mb") is not None:
+        parts.append(f"gpu_res={snapshot.get('gpu_mem_reserved_mb')}MB")
+    return "[monitor] " + " ".join(parts)
 
 
 def _run_timing(
@@ -415,6 +535,47 @@ def _save_outputs(timing_rows: list[dict], summary_rows: list[dict]) -> None:
     _write_csv(OUT_SUMMARY, summary_fieldnames, summary_rows)
 
 
+def _load_existing_monitoring_results() -> list[dict]:
+    monitor_rows: list[dict] = []
+    if OUT_MONITORING.exists():
+        try:
+            monitor_df = pd.read_csv(OUT_MONITORING)
+            monitor_rows = monitor_df.to_dict(orient="records")
+        except Exception as e:
+            print(f"[orig_vs_pq] Warning: Failed to read monitoring CSV: {e}")
+    return monitor_rows
+
+
+def _save_monitoring_rows(monitor_rows: list[dict]) -> None:
+    monitoring_fieldnames = [
+        "timestamp",
+        "stage",
+        "scenario",
+        "algorithm",
+        "backend_label",
+        "kem_backend",
+        "sig_backend",
+        "n_clients",
+        "dropout_rate",
+        "vector_size",
+        "repeat",
+        "process_cpu_pct",
+        "system_cpu_pct",
+        "process_rss_mb",
+        "process_vms_mb",
+        "system_ram_used_pct",
+        "system_ram_available_mb",
+        "system_ram_total_mb",
+        "process_threads",
+        "gpu_mem_alloc_mb",
+        "gpu_mem_reserved_mb",
+        "gpu_mem_max_alloc_mb",
+        "cuda_available",
+        "psutil_available",
+    ]
+    _write_csv(OUT_MONITORING, monitoring_fieldnames, monitor_rows)
+
+
 def _make_scenario_key(scenario_name: str, n_clients: int, dropout_rate: float, vector_size: int, algorithm: str) -> tuple:
     """Create a hashable key for scenario tracking."""
     return (scenario_name, n_clients, dropout_rate, vector_size, algorithm)
@@ -626,8 +787,16 @@ def run(
 
     print(f"[orig_vs_pq] Using device: {device}")
 
+    if psutil is not None:
+        try:
+            psutil.Process(os.getpid()).cpu_percent(None)
+            psutil.cpu_percent(None)
+        except Exception:
+            pass
+
     progress, timing_rows, summary_rows = _load_checkpoint()
     csv_progress, csv_timing_rows, csv_summary_rows = _load_existing_csv_results()
+    monitor_rows = _load_existing_monitoring_results()
     if csv_progress:
         progress.update(csv_progress)
         if not timing_rows:
@@ -646,6 +815,7 @@ def run(
     print(f"[orig_vs_pq] Found {len(progress)} / {total_scenarios} scenarios already completed")
     print("[orig_vs_pq] CSV output files are being initialized now; first scenario may take several minutes.", flush=True)
     _save_outputs(timing_rows, summary_rows)
+    _save_monitoring_rows(monitor_rows)
 
     for scenario in scenarios:
         scenario_name = str(scenario["scenario"])
@@ -697,6 +867,18 @@ def run(
 
                 # 1. Chạy mồi (Warm-up) 1 lần duy nhất để nạp thư viện C/C++
                 if completed_repeats == 0:
+                    snapshot = _capture_runtime_snapshot(
+                        stage="warmup_before",
+                        scenario=scenario_name,
+                        algorithm=algorithm,
+                        n_clients=n_clients,
+                        dropout_rate=dropout_rate,
+                        vector_size=vector_size,
+                    )
+                    monitor_rows.append(snapshot)
+                    print(_monitor_line(snapshot), flush=True)
+                    _save_monitoring_rows(monitor_rows)
+
                     _run_timing_once(
                         algorithm=algorithm,
                         n_clients=min(n_clients, 5), # Chạy nháp với số client nhỏ
@@ -704,8 +886,33 @@ def run(
                         vector_size=vector_size,
                     )
 
+                    snapshot = _capture_runtime_snapshot(
+                        stage="warmup_after",
+                        scenario=scenario_name,
+                        algorithm=algorithm,
+                        n_clients=n_clients,
+                        dropout_rate=dropout_rate,
+                        vector_size=vector_size,
+                    )
+                    monitor_rows.append(snapshot)
+                    print(_monitor_line(snapshot), flush=True)
+                    _save_monitoring_rows(monitor_rows)
+
                 # 2. Vòng lặp đo lường chính thức
                 for repeat_index in range(completed_repeats, N_REPEAT):
+                    before_snapshot = _capture_runtime_snapshot(
+                        stage="repeat_before",
+                        scenario=scenario_name,
+                        algorithm=algorithm,
+                        n_clients=n_clients,
+                        dropout_rate=dropout_rate,
+                        vector_size=vector_size,
+                        repeat_index=repeat_index + 1,
+                    )
+                    monitor_rows.append(before_snapshot)
+                    print(_monitor_line(before_snapshot), flush=True)
+                    _save_monitoring_rows(monitor_rows)
+
                     print(
                         f"[orig_vs_pq] repeat {repeat_index + 1}/{N_REPEAT} for scenario={scenario_name} "
                         f"n={n_clients} dropout={dropout_rate:.1f} vector={vector_size} algo={algorithm['algorithm']}",
@@ -727,6 +934,18 @@ def run(
                     if torch.cuda.is_available():
                         torch.cuda.empty_cache()
                     gc.collect()
+
+                    after_snapshot = _capture_runtime_snapshot(
+                        stage="repeat_after",
+                        scenario=scenario_name,
+                        algorithm=algorithm,
+                        n_clients=n_clients,
+                        dropout_rate=dropout_rate,
+                        vector_size=vector_size,
+                        repeat_index=repeat_index + 1,
+                    )
+                    monitor_rows.append(after_snapshot)
+                    print(_monitor_line(after_snapshot), flush=True)
 
                     for phase_name in accumulated:
                         accumulated[phase_name] += float(timings[phase_name])
@@ -815,6 +1034,7 @@ def run(
                     scenario_state["completed_repeats"] = repeat_index + 1
                     _save_checkpoint(progress, timing_rows, summary_rows)
                     _save_outputs(timing_rows, summary_rows)
+                    _save_monitoring_rows(monitor_rows)
 
                 comm = _estimate_comm_bytes(
                     algorithm=algorithm,
@@ -853,8 +1073,20 @@ def run(
                     unmasking_sec=summary_rows[-1]["unmasking_sec"],
                 ))
 
+                done_snapshot = _capture_runtime_snapshot(
+                    stage="scenario_done",
+                    scenario=scenario_name,
+                    algorithm=algorithm,
+                    n_clients=n_clients,
+                    dropout_rate=dropout_rate,
+                    vector_size=vector_size,
+                )
+                monitor_rows.append(done_snapshot)
+                print(_monitor_line(done_snapshot), flush=True)
+
                 _save_checkpoint(progress, timing_rows, summary_rows)
                 _save_outputs(timing_rows, summary_rows)
+                _save_monitoring_rows(monitor_rows)
 
             except Exception as e:
                 print(f"[orig_vs_pq] ERROR in scenario: {e}", file=sys.stderr)

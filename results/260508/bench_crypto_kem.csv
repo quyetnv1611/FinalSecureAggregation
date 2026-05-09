@@ -1,0 +1,5 @@
+backend,pk_bytes,ct_bytes,keygen_ms,encaps_ms,decaps_ms,pq_safe
+DH-2048,256,0,45.119,27.05,0,False
+ML-KEM-512,800,768,4.186,3.087,0.003,True
+ML-KEM-768,1184,1088,6.928,4.872,0.005,True
+ML-KEM-1024,1568,1568,9.982,6.494,0.003,True

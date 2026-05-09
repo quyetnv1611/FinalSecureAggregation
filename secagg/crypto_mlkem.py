@@ -264,9 +264,16 @@ class SecAggregatorMLKEM:
     # ------------------------------------------------------------------
 
     def set_weights(self, weights: np.ndarray) -> None:
-        
-        # self._weights = np.float64(weights)
-        self._weights = np.round(weights * self.SCALE_FACTOR).astype(np.int64)
+        arr = np.asarray(weights, dtype=np.float64)
+        int_info = np.iinfo(np.int64)
+        safe_input_limit = float(int_info.max) / self.SCALE_FACTOR
+
+        if not np.all(np.isfinite(arr)):
+            logger.warning("Non-finite values in weights; replacing with 0")
+            arr = np.nan_to_num(arr, nan=0.0, posinf=safe_input_limit, neginf=-safe_input_limit)
+
+        arr = np.clip(arr, -safe_input_limit, safe_input_limit)
+        self._weights = np.round(arr * self.SCALE_FACTOR).astype(np.int64)
 
     def prepare_masked_gradient(
         self,

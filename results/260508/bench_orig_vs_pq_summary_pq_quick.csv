@@ -1,0 +1,4 @@
+scenario,algorithm,backend_label,kem_backend,sig_backend,n_clients,dropout_rate,vector_size,advertise_keys_sec,share_keys_sec,verify_sigs_sec,masked_input_sec,unmasking_sec,total_time_sec,client_time_sec,server_time_sec,client_time_pct,server_time_pct,advertise_mb,share_mb,masked_mb,total_comm_mb
+clients,pq,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,20,0.0,100,3.340691,4.826041,9.795301,0.023864,5.6e-05,17.985953,8.190596,9.795357,45.539,54.461,0.006445,0.010336,0.000775,0.017556
+dropout,pq,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,100,0.0,100,16.821738,122.015562,293.60451,0.603891,0.000296,433.045997,139.441191,293.604806,32.2,67.8,0.006445,0.053856,0.000775,0.061076
+vector,pq,PQ (ML-KEM-768 + ML-DSA-65),ML-KEM-768,ML-DSA-65,100,0.0,100,20.980291,125.98918,263.341253,0.624022,0.000394,410.93514,147.593493,263.341647,35.916,64.084,0.006445,0.053856,0.000775,0.061076

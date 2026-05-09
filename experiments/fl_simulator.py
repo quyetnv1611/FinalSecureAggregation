@@ -121,6 +121,7 @@ class FLSimulator:
             local_model = deepcopy(self.global_model)
             opt = torch.optim.SGD(local_model.parameters(), lr=self.lr,
                                   momentum=0.9, weight_decay=1e-4)
+            max_grad_norm = 5.0
             local_model.train()
             
             # Client tự học trên tập dữ liệu ảnh của mình
@@ -128,11 +129,19 @@ class FLSimulator:
                 for X, y in train_loaders[idx]:
                     X, y = X.to(self.device), y.to(self.device)
                     opt.zero_grad()
-                    self.loss_fn(local_model(X), y).backward()
+                    loss = self.loss_fn(local_model(X), y)
+                    if not torch.isfinite(loss):
+                        print(f"[FLSimulator] Non-finite loss on client {sid}; skipping batch")
+                        continue
+                    loss.backward()
+                    torch.nn.utils.clip_grad_norm_(local_model.parameters(), max_grad_norm)
                     opt.step()
             
             # Trích xuất trọng số thật đã học thành mảng numpy float64
             local_weights_np = _get_flat_params(local_model).cpu().numpy().astype(np.float64)
+            if not np.all(np.isfinite(local_weights_np)):
+                print(f"[FLSimulator] Non-finite local weights on client {sid}; sanitizing before SecAgg")
+                local_weights_np = np.nan_to_num(local_weights_np, nan=0.0, posinf=0.0, neginf=0.0)
             
             # Đưa bộ trọng số thật này vào engine bảo mật của client
             crypto_clients[sid].set_weights(local_weights_np)

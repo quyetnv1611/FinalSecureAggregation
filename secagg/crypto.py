@@ -110,15 +110,27 @@ class SecAggregator:
 
 
     def register_peer_public_keys(self, peer_public_keys: Dict[str, int], my_sid: str) -> None:
+        # Triangular (DH): chỉ lưu peer khi sid > my_sid
+        # Cách này client chỉ compute DH với những peers có rank cao hơn → n(n-1)/2 thay vì n(n-1)
         self._peer_keys = {
-            sid: pk for sid, pk in peer_public_keys.items() if sid != my_sid
+            sid: pk for sid, pk in peer_public_keys.items() 
+            if sid != my_sid and sid > my_sid
         }
         self._my_sid = my_sid
 
 
     def set_weights(self, weights: np.ndarray) -> None:
-        # self._weights = np.float64(weights)
-        self._weights = np.round(weights * self.SCALE_FACTOR).astype(np.int64)
+        arr = np.asarray(weights, dtype=np.float64)
+        int_info = np.iinfo(np.int64)
+        safe_input_limit = float(int_info.max) / self.SCALE_FACTOR
+
+        if not np.all(np.isfinite(arr)):
+            logger.warning("Non-finite values in weights; replacing with 0")
+            arr = np.nan_to_num(arr, nan=0.0, posinf=safe_input_limit, neginf=-safe_input_limit)
+
+        arr = np.clip(arr, -safe_input_limit, safe_input_limit)
+        scaled = np.round(arr * self.SCALE_FACTOR)
+        self._weights = scaled.astype(np.int64)
 
     def prepare_masked_gradient(
         self,

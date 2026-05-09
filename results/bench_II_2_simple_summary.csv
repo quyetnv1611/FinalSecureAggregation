@@ -1,0 +1,2 @@
+dataset,n_clients,local_epochs,n_rounds,dropout_rate,final_accuracy,final_loss,best_accuracy,best_loss,best_round,convergence_time_sec,total_time_sec
+mnist,5,1,1,0.0,0.8579,0.606027,0.8579,0.606027,1,194.407,194.407

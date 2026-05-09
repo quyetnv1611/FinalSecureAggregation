@@ -190,8 +190,9 @@ def _get_cifar10():
 
 def _get_spam():
     from experiments.datasets.spam_loader import load_spam
+    from experiments.models.spam_model import ImprovedMLP  # Better accuracy than original MLP
     tl, vl, idim = load_spam(n_clients=N_CLIENTS, batch_size=BATCH_SIZE)
-    return tl, vl, lambda: MLP(idim), nn.CrossEntropyLoss()
+    return tl, vl, lambda: ImprovedMLP(idim), nn.CrossEntropyLoss()
 
 
 def _get_webattack():

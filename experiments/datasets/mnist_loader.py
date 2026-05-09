@@ -24,6 +24,7 @@ def load_mnist(
     iid: bool = True,           # chia IID hay non-IID (fix code)
     data_root: str = "./data", # thư mục MNIST (fix code)
 ) -> Tuple[List[DataLoader], DataLoader]:
+    use_pin_memory = torch.cuda.is_available()
     tf = transforms.Compose([
         transforms.ToTensor(),
         transforms.Normalize((0.1307,), (0.3081,)),
@@ -31,7 +32,7 @@ def load_mnist(
 
     train_ds = datasets.MNIST(data_root, train=True,  download=True, transform=tf)
     test_ds  = datasets.MNIST(data_root, train=False, download=True, transform=tf)
-    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=True)
+    test_loader = DataLoader(test_ds, batch_size=batch_size, shuffle=False, num_workers=4, pin_memory=use_pin_memory)
 
     if iid:
         total = len(train_ds)
@@ -49,7 +50,7 @@ def load_mnist(
         ]
 
     train_loaders = [
-        DataLoader(sub, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=True)
+        DataLoader(sub, batch_size=batch_size, shuffle=True, num_workers=4, pin_memory=use_pin_memory)
         for sub in subsets
     ]
     return train_loaders, test_loader

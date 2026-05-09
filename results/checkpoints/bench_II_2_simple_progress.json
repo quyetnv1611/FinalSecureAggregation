@@ -1,0 +1,33 @@
+{
+  "completed": {
+    "mnist_5_1_0.00": true
+  },
+  "summary_rows": [
+    {
+      "dataset": "mnist",
+      "n_clients": 5,
+      "local_epochs": 1,
+      "n_rounds": 1,
+      "dropout_rate": 0.0,
+      "final_accuracy": 0.8579,
+      "final_loss": 0.606027,
+      "best_accuracy": 0.8579,
+      "best_loss": 0.606027,
+      "best_round": 1,
+      "convergence_time_sec": 194.407,
+      "total_time_sec": 194.407
+    }
+  ],
+  "per_round_rows": [
+    {
+      "dataset": "mnist",
+      "n_clients": 5,
+      "local_epochs": 1,
+      "dropout_rate": 0.0,
+      "round": 1,
+      "loss": 0.606027,
+      "accuracy": 0.8579
+    }
+  ],
+  "timestamp": 1778299223.0818658
+}
